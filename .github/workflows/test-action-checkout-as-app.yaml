@@ -1,0 +1,73 @@
+name: "Test Action: checkout-as-app"
+
+on:
+  push:
+    paths: &paths
+      - .github/workflows/test-action-checkout-as-app.yaml
+      - checkout-as-app/**
+  pull_request:
+    paths: *paths
+
+env:
+  TEST_REPO: eth-p/gh-actions-test-repo
+
+jobs:
+  test-with-defaults:
+    name: "Checkout Works"
+    runs-on: ubuntu-latest
+    steps:
+      - id: action
+        uses: $/checkout-as-app
+        with:
+          ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+          ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          repository: ${{ env.TEST_REPO }}
+
+      - name: "Assert: Repo Cloned"
+        shell: bash
+        run: |-
+          set -euo pipefail
+          set -x
+          git rev-parse HEAD
+
+      - name: "Assert: Repo is Shallow"
+        shell: bash
+        run: |-
+          set -euo pipefail
+          if [[ $(git rev-parse --is-shallow-repository) != "true" ]]; then
+            printf "\x1B[31mNot cloned as a shallow repo.\x1B[m\n"
+            exit 1
+          fi
+
+      - name: "Assert: Local user.name configured"
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git config --local user.name
+
+      - name: "Assert: Local user.email configured"
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git config --local user.email
+
+      - name: "Output: git-name"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.git-name }}" }
+        run: |-
+          set -euo pipefail
+          test -n "$OUTPUT"
+
+      - name: "Output: git-email"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.git-email }}" }
+        run: |-
+          set -euo pipefail
+          test -n "$OUTPUT"
+
+      - name: "Output: token"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.token }}" }
+        run: |-
+          set -euo pipefail
+          test -n "$OUTPUT"

@@ -1,0 +1,170 @@
+name: "Checkout as App"
+description: "Checkout a repo using GitHub App credentials."
+inputs:
+  ghapp-client-id:
+    description: "The client ID of a GitHub app installed in the remote repo."
+    required: true
+
+  ghapp-private-key:
+    description: "The private key of a GitHub app installed in the remote repo."
+    required: true
+
+  configure-git:
+    description: "Whether to set the repo committer to the GitHub App."
+    default: "true"
+    required: false
+
+  # From actions/checkout
+  repository:
+    description: "Repository name with owner. For example, actions/checkout."
+    required: true
+
+  # From actions/checkout
+  ref:
+    description: "The branch, tag or SHA to checkout."
+    default: ""
+    required: false
+
+  # From actions/checkout
+  persist-credentials:
+    description: "Whether to configure the token with the local git config"
+    default: "true"
+    required: false
+
+  # From actions/checkout
+  path:
+    description: "Relative path under $GITHUB_WORKSPACE to place the repository"
+    default: "."
+    required: false
+
+  # From actions/checkout
+  clean:
+    description: "Whether to execute `git clean -ffdx && git reset --hard HEAD` before fetching"
+    default: "true"
+    required: false
+
+  # From actions/checkout
+  filter:
+    description: "Partially clone against a given filter. Overrides sparse-checkout if set."
+    default: ""
+    required: false
+
+  # From actions/checkout
+  sparse-checkout:
+    description: "Do a sparse checkout on given patterns. Each pattern should be separated with new lines."
+    default: ""
+
+  # From actions/checkout
+  sparse-checkout-cone-mode:
+    description: "Specifies whether to use cone-mode when doing a sparse checkout."
+    default: "true"
+    required: false
+
+  # From actions/checkout
+  fetch-depth:
+    description: "Number of commits to fetch. 0 indicates all history for all branches and tags."
+    default: "1"
+    required: false
+
+  # From actions/checkout
+  fetch-tags:
+    description: "Whether to fetch tags, even if fetch-depth > 0."
+    default: "false"
+    required: false
+
+  # From actions/checkout
+  show-progress:
+    description: "Whether to show progress status output when fetching."
+    default: "true"
+    required: false
+
+  # From actions/checkout
+  lfs:
+    description: "Whether to download Git-LFS files"
+    default: "false"
+    required: false
+
+  # From actions/checkout
+  submodules:
+    description: "Whether to checkout submodules: `true` or `recursive`."
+    default: "false"
+    required: false
+
+outputs:
+  git-name:
+    description: "The git user.name of the GitHub App."
+    value: ${{ steps.configure-git.outputs.git-name }}
+
+  git-email:
+    description: "The git user.email of the GitHub App."
+    value: ${{ steps.configure-git.outputs.git-email }}
+
+  token:
+    description: "The GitHub App's repo-scoped GITHUB_TOKEN."
+    value: ${{ steps.app-token.outputs.token }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Generate Variables"
+      id: vars
+      shell: bash
+      env:
+        REPOSITORY: ${{ inputs.repository }}
+      run: |-
+        set -euo pipefail
+        {
+          printf "repo-owner=%s\n" "$(dirname -- "$REPOSITORY")"
+          printf "repo-name=%s\n" "$(basename -- "$REPOSITORY")"
+        } >>"$GITHUB_OUTPUT"
+
+    - name: "Get GitHub Token for ${{ inputs.repository }}"
+      uses: actions/create-github-app-token@v3
+      id: app-token
+      with:
+        client-id: ${{ inputs.ghapp-client-id }}
+        private-key: ${{ inputs.ghapp-private-key }}
+        owner: ${{ steps.vars.outputs.repo-owner }}
+        repositories: ${{ steps.vars.outputs.repo-name }}
+
+    - name: "Checkout Repo"
+      uses: actions/checkout@v7
+      with:
+        repository: ${{ inputs.repository }}
+        token: ${{ steps.app-token.outputs.token }}
+        ref: ${{ inputs.ref }}
+        persist-credentials: ${{ inputs.persist-credentials }}
+        path: ${{ inputs.path }}
+        clean: ${{ inputs.clean }}
+        filter: ${{ inputs.filter }}
+        sparse-checkout: ${{ inputs.sparse-checkout }}
+        sparse-checkout-cone-mode: ${{ inputs.sparse-checkout-cone-mode }}
+        fetch-depth: ${{ inputs.fetch-depth }}
+        fetch-tags: ${{ inputs.fetch-tags }}
+        show-progress: ${{ inputs.show-progress }}
+        lfs: ${{ inputs.lfs }}
+        submodules: ${{ inputs.submodules }}
+
+    - name: "Configure Git"
+      id: configure-git
+      shell: bash
+      env:
+        REPO_PATH: "${{ inputs.path }}"
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        GHAPP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        CONFIGURE_GIT: ${{ inputs.configure-git }}
+      run: |-
+        set -euo pipefail
+        ghapp_user_id=$(gh api "/users/${GHAPP_SLUG}[bot]" --jq .id)
+        git_name="${GHAPP_SLUG}[bot]"
+        git_email="${ghapp_user_id}+${GHAPP_SLUG}[bot]@users.noreply.github.com"
+
+        {
+          printf "git-name=%s\n" "$git_name"
+          printf "git-email=%s\n" "$git_email"
+        } >>"$GITHUB_OUTPUT"
+
+        if [[ "$CONFIGURE_GIT" = "true" ]]; then
+          git -C "$REPO_PATH" config --local user.name "$git_name"
+          git -C "$REPO_PATH" config --local user.email "$git_email"
+        fi
