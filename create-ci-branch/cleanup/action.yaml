@@ -1,0 +1,91 @@
+name: "Cleanup CI Branch"
+description: "Cleans up a branch created by create-ci-branch."
+inputs:
+  repository:
+    description: "Repository name with owner. For example, actions/checkout."
+    required: true
+
+  branch:
+    description: "The branch output from create-ci-branch."
+    required: true
+
+  github-token:
+    description: "The GITHUB_TOKEN to use to delete the branches."
+    required: false
+    default: ""
+
+  ghapp-client-id:
+    description: "The client ID of a GitHub app installed in the remote repo."
+    required: false
+    default: ""
+
+  ghapp-private-key:
+    description: "The private key of a GitHub app installed in the remote repo."
+    required: false
+    default: ""
+
+outputs:
+  count:
+    description: "The number of branches deleted."
+    value: ${{ steps.delete.outputs.count }}
+
+  branches:
+    description: "The names of branches deleted."
+    value: ${{ steps.delete.outputs.branches }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Generate Variables"
+      id: vars
+      shell: bash
+      env:
+        REPOSITORY: ${{ inputs.repository }}
+      run: |-
+        set -euo pipefail
+        {
+          printf "repo-owner=%s\n" "$(dirname -- "$REPOSITORY")"
+          printf "repo-name=%s\n" "$(basename -- "$REPOSITORY")"
+        } >>"$GITHUB_OUTPUT"
+
+    - name: "Get GitHub Token for ${{ inputs.repository }}"
+      if: ${{ inputs.github-token == '' && inputs.ghapp-client-id != '' }}
+      uses: actions/create-github-app-token@v3
+      id: app-token
+      with:
+        client-id: ${{ inputs.ghapp-client-id }}
+        private-key: ${{ inputs.ghapp-private-key }}
+        owner: ${{ steps.vars.outputs.repo-owner }}
+        repositories: ${{ steps.vars.outputs.repo-name }}
+
+    - name: Prepare authorization
+      id: auth
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        GHAPP_TOKEN: ${{ steps.app-token.outputs.token }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |-
+        set -euo pipefail
+        if [[ -n "$INPUT_GITHUB_TOKEN" ]]; then
+          echo "token=$INPUT_GITHUB_TOKEN" >>"$GITHUB_OUTPUT"
+          echo "Using GH_TOKEN from action input."
+        elif [[ -n "$GHAPP_TOKEN" ]]; then
+          echo "token=$GHAPP_TOKEN" >>"$GITHUB_OUTPUT"
+          echo "Using GH_TOKEN from app installation."
+        else
+          echo "token=$GITHUB_TOKEN" >>"$GITHUB_OUTPUT"
+          echo "Using GH_TOKEN from context."
+        fi
+
+    - name: Delete branches
+      id: delete
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.auth.outputs.token }}
+        GITHUB_TOKEN: ${{ steps.auth.outputs.token }}
+        REPOSITORY: ${{ inputs.repository }}
+        BRANCH_PREFIX: ${{ inputs.branch }}
+      run: |-
+        set -euo pipefail
+        bash "${GITHUB_ACTION_PATH}/cleanup.sh"

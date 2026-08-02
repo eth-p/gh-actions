@@ -4,6 +4,7 @@ on:
   push:
     paths: &paths
       - .github/workflows/test-action-create-ci-branch.yaml
+      - .github/workflows/test-action-create-ci-branch-cleanup.yaml
       - create-ci-branch/**
       - checkout-as-app/** # dependency
   pull_request:

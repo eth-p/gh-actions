@@ -1,0 +1,123 @@
+name: "Test Action: create-ci-branch/cleanup"
+
+on:
+  push:
+    paths: &paths
+      - .github/workflows/test-action-create-ci-branch.yaml
+      - .github/workflows/test-action-create-ci-branch-cleanup.yaml
+      - create-ci-branch/**
+      - checkout-as-app/** # dependency
+  pull_request:
+    paths: *paths
+
+env:
+  TEST_REPO: eth-p/gh-actions-test-repo
+
+jobs:
+  meta:
+    name: "Passed - create-ci-branch/cleanup"
+    runs-on: ubuntu-latest
+    steps: [{ run: "true" }]
+    needs:
+      - test-one-branch
+      - test-extra-branches
+
+  test-one-branch:
+    name: "Deletes Created Branch"
+    runs-on: ubuntu-latest
+    steps:
+      - id: test-branch
+        uses: $/create-ci-branch
+        with:
+          ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+          ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          repository: ${{ env.TEST_REPO }}
+
+      - id: action
+        uses: $/create-ci-branch/cleanup
+        with:
+          repository: ${{ env.TEST_REPO }}
+          github-token: ${{ steps.test-branch.outputs.token }}
+          branch: ${{ steps.test-branch.outputs.branch }}
+
+      - name: "Assert: Branch no longer exists on remote"
+        shell: bash
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        run: |-
+          set -euo pipefail
+          test -z "$(git ls-remote origin "refs/heads/${BRANCH}")"
+
+      - name: "Output: count"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.count }}" }
+        run: |-
+          set -euo pipefail
+          test "$OUTPUT" -eq 1
+
+      - name: "Output: branches"
+        shell: bash
+        env:
+          OUTPUT: ${{ steps.action.outputs.branches }}
+          EXPECTED: ${{ steps.test-branch.outputs.branch }}
+        run: |-
+          set -euo pipefail
+          test "$OUTPUT" = "$EXPECTED"
+
+  test-extra-branches:
+    name: "Deletes Additional Branches"
+    runs-on: ubuntu-latest
+    steps:
+      - id: test-branch
+        uses: $/create-ci-branch
+        with:
+          ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+          ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          repository: ${{ env.TEST_REPO }}
+
+      - name: Create an extra branch
+        shell: bash
+        env:
+          BRANCH: ${{ steps.test-branch.outputs.branch }}
+        run: |-
+          git checkout -b "${BRANCH}-extra"
+          git push origin "${BRANCH}-extra"
+
+      - id: action
+        uses: $/create-ci-branch/cleanup
+        with:
+          repository: ${{ env.TEST_REPO }}
+          github-token: ${{ steps.test-branch.outputs.token }}
+          branch: ${{ steps.test-branch.outputs.branch }}
+
+      - name: "Assert: Branch no longer exists on remote"
+        shell: bash
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        run: |-
+          set -euo pipefail
+          test -z "$(git ls-remote origin "refs/heads/${BRANCH}")"
+
+      - name: "Assert: Extra branch no longer exists on remote"
+        shell: bash
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        run: |-
+          set -euo pipefail
+          test -z "$(git ls-remote origin "refs/heads/${BRANCH}-extra")"
+
+      - name: "Output: count"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.count }}" }
+        run: |-
+          set -euo pipefail
+          test "$OUTPUT" -eq 2
+
+      - name: "Output: branches"
+        shell: bash
+        env:
+          OUTPUT: ${{ steps.action.outputs.branches }}
+          EXPECTED_1: ${{ steps.test-branch.outputs.branch }}
+          EXPECTED_2: "${{ steps.test-branch.outputs.branch }}-extra"
+        run: |-
+          set -euo pipefail
+          set -x
+          grep -Fx "$EXPECTED_1" <<<"$OUTPUT"
+          grep -Fx "$EXPECTED_2" <<<"$OUTPUT"
