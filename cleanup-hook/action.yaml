@@ -1,0 +1,21 @@
+name: "Cleanup Hook"
+description: "Runs a script at the end of the current job."
+inputs:
+  run:
+    description: "The script to run."
+    required: true
+
+  shell:
+    description: "The shell to run the script with. Defaults to bash."
+    default: "bash"
+    required: false
+
+  working-directory:
+    description: "The working directory to run the script under."
+    default: ""
+    required: false
+
+runs:
+  using: node24
+  main: action-main.js
+  post: action-post.js

@@ -1,0 +1,148 @@
+name: "Test Action: cleanup-hook"
+
+on:
+  push:
+    paths: &paths
+      - .github/workflows/test-action-cleanup-hook.yaml
+      - cleanup-hook/**
+  pull_request:
+    paths: *paths
+
+env:
+  TEST_REPO: eth-p/gh-actions-test-repo
+
+jobs:
+  meta:
+    name: "Passed - cleanup-hook"
+    runs-on: ubuntu-latest
+    steps: [{ run: "true" }]
+    needs:
+      - test-single
+      - test-multiple
+
+  test-single-impl:
+    name: "Single Hook (Run)"
+    runs-on: ubuntu-latest
+    outputs:
+      job-id: ${{ steps.setup.outputs.job-id }}
+      magic-1a: ${{ steps.setup.outputs.magic-1a }}
+      magic-1b: ${{ steps.setup.outputs.magic-1b }}
+    steps:
+      - id: setup
+        shell: bash
+        env:
+          JOB_ID: ${{ job.check_run_id }}
+        run: |-
+          set -euo pipefail
+          echo "job-id=${JOB_ID}" >>"$GITHUB_OUTPUT"
+          echo "magic-1a=$(uuidgen | tr -d '-')" >>"$GITHUB_OUTPUT"
+          echo "magic-1b=$(uuidgen | tr -d '-')" >>"$GITHUB_OUTPUT"
+
+      - id: action
+        uses: $/cleanup-hook
+        env:
+          MAGIC_1A: "${{ steps.setup.outputs.magic-1a }}"
+          MAGIC_1B: "${{ steps.setup.outputs.magic-1b }}"
+        with:
+          run: |-
+            set -euo pipefail
+            printf "%s%s\n" "$MAGIC_1A" "$MAGIC_1B"
+
+  test-single:
+    needs: [test-single-impl]
+    name: "Single Hook (Assert)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Fetch logs of run"
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TARGET_JOB: ${{ needs.test-single-impl.outputs.job-id }}
+        run: |-
+          gh api "/repos/${REPO}/actions/jobs/${TARGET_JOB}/logs" >logs.txt
+
+          echo "::group::Fetched logs"
+          sed -E 's/##\[(group|endgroup)\]//g; s/^/│ /;' logs.txt
+          echo "::endgroup::"
+
+      - name: "Assert: Logs contains magic text from hook script"
+        shell: bash
+        env:
+          EXPECTED: "${{ needs.test-single-impl.outputs.magic-1a }}${{ needs.test-single-impl.outputs.magic-1b }}"
+        run: |-
+          grep -F "${EXPECTED}" logs.txt
+
+  test-multiple-impl:
+    name: "Multiple Hooks (Run)"
+    runs-on: ubuntu-latest
+    outputs:
+      job-id: ${{ steps.setup.outputs.job-id }}
+      magic-1a: ${{ steps.setup.outputs.magic-1a }}
+      magic-1b: ${{ steps.setup.outputs.magic-1b }}
+      magic-2a: ${{ steps.setup.outputs.magic-2a }}
+      magic-2b: ${{ steps.setup.outputs.magic-2b }}
+    steps:
+      - id: setup
+        shell: bash
+        env:
+          JOB_ID: ${{ job.check_run_id }}
+        run: |-
+          set -euo pipefail
+          echo "job-id=${JOB_ID}" >>"$GITHUB_OUTPUT"
+          echo "magic-1a=$(uuidgen | tr -d '-')" >>"$GITHUB_OUTPUT"
+          echo "magic-1b=$(uuidgen | tr -d '-')" >>"$GITHUB_OUTPUT"
+          echo "magic-2a=$(uuidgen | tr -d '-')" >>"$GITHUB_OUTPUT"
+          echo "magic-2b=$(uuidgen | tr -d '-')" >>"$GITHUB_OUTPUT"
+
+      - id: action
+        uses: $/cleanup-hook
+        env:
+          MAGIC_1A: "${{ steps.setup.outputs.magic-1a }}"
+          MAGIC_1B: "${{ steps.setup.outputs.magic-1b }}"
+        with:
+          run: |-
+            set -euo pipefail
+            printf "%s%s\n" "$MAGIC_1A" "$MAGIC_1B"
+
+      - id: action-2
+        uses: $/cleanup-hook
+        env:
+          MAGIC_2A: "${{ steps.setup.outputs.magic-2a }}"
+          MAGIC_2B: "${{ steps.setup.outputs.magic-2b }}"
+        with:
+          run: |-
+            set -euo pipefail
+            printf "%s%s\n" "$MAGIC_2A" "$MAGIC_2B"
+
+  test-multiple:
+    needs: [test-multiple-impl]
+    name: "Multiple Hooks (Assert)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Fetch logs of run"
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TARGET_JOB: ${{ needs.test-multiple-impl.outputs.job-id }}
+        run: |-
+          gh api "/repos/${REPO}/actions/jobs/${TARGET_JOB}/logs" >logs.txt
+
+          echo "::group::Fetched logs"
+          sed -E 's/##\[(group|endgroup)\]//g; s/^/│ /;' logs.txt
+          echo "::endgroup::"
+
+      - name: "Assert: Logs contains magic text from first hook"
+        shell: bash
+        env:
+          EXPECTED: "${{ needs.test-multiple-impl.outputs.magic-1a }}${{ needs.test-multiple-impl.outputs.magic-1b }}"
+        run: |-
+          grep -F "${EXPECTED}" logs.txt
+
+      - name: "Assert: Logs contains magic text from second hook"
+        shell: bash
+        env:
+          EXPECTED: "${{ needs.test-multiple-impl.outputs.magic-2a }}${{ needs.test-multiple-impl.outputs.magic-2b }}"
+        run: |-
+          grep -F "${EXPECTED}" logs.txt
