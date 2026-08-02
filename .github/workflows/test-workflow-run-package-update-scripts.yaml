@@ -1,0 +1,145 @@
+name: "Test Workflow: run-package-update-scripts"
+
+on:
+  push:
+    paths: &paths
+      - .github/workflows/test-workflow-run-package-update-scripts.yaml
+      - .github/workflows/run-package-update-scripts.yaml
+      - rebase-branch/** # dependency
+      - checkout-as-app/** # dependency
+      - create-ci-branch/** # test dependency
+  pull_request:
+    paths: *paths
+
+env:
+  TEST_REPO: &test-repo "eth-p/gh-actions-test-repo"
+
+jobs:
+  meta:
+    name: "Passed - run-package-update-scripts"
+    runs-on: ubuntu-latest
+    steps: [{ run: "true" }]
+    needs:
+      - test-when-has-updates
+
+  test-when-has-updates-setup:
+    name: "When Has Updates (Setup)"
+    runs-on: ubuntu-latest
+    outputs:
+      branch: ${{ steps.test-branch.outputs.branch }}
+      banner: ${{ steps.test-branch.outputs.banner }}
+    steps:
+      - id: test-branch
+        uses: $/create-ci-branch
+        with:
+          ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+          ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          repository: ${{ env.TEST_REPO }}
+
+      - name: "Setup"
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        shell: bash
+        run: |-
+          set -euo pipefail
+
+          # Create the scripts branch.
+          git checkout -b "${BRANCH}-scripts"
+          for script in foo bar; do
+            printf "touch %q\ngit add %q\ngit commit -m %q" \
+              "$script" "$script" "update($script): pretend update" \
+              >"${script}.sh"
+
+            git add "${script}.sh"
+          done
+
+          git commit -m 'ci: Add scripts for run-package-update-scripts'
+          git push origin "${BRANCH}-scripts"
+
+  test-when-has-updates-run:
+    name: "When Has Updates (Run)"
+    needs:
+      - test-when-has-updates-setup
+    uses: $/.github/workflows/run-package-update-scripts.yaml
+    permissions:
+      contents: write
+      pull-requests: write
+    secrets:
+      ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+      ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+    with:
+      auth-with-ghapp: true
+      repository: *test-repo
+      base-branch: ${{ needs.test-when-has-updates-setup.outputs.branch }}
+      pr-branch: ${{ needs.test-when-has-updates-setup.outputs.branch }}-pr
+      script-branch:  ${{ needs.test-when-has-updates-setup.outputs.branch }}-scripts
+      scripts: |-
+        foo
+        bar
+      script-exec: |-
+        bash "${SCRIPTS_WORKSPACE}/${SCRIPT}.sh"
+      pr-title: "Test run-package-update-scripts workflow"
+      pr-body: ${{ needs.test-when-has-updates-setup.outputs.banner }}
+      pr-labels: ci
+
+  test-when-has-updates:
+    name: "When Has Updates (Assert)"
+    runs-on: ubuntu-latest
+    needs:
+      - test-when-has-updates-setup
+      - test-when-has-updates-run
+    steps:
+      - uses: $/checkout-as-app
+        id: checkout
+        with:
+          ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+          ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          repository: ${{ env.TEST_REPO }}
+          ref: ${{ needs.test-when-has-updates-setup.outputs.branch }}-pr
+
+      - name: "Assert: Has changes from foo script"
+        env: { BRANCH: "${{ needs.test-when-has-updates-setup.outputs.branch }}" }
+        shell: bash
+        run: |-
+          set -euo pipefail
+          test -f foo
+
+      - name: "Assert: Has changes from bar script"
+        env: { BRANCH: "${{ needs.test-when-has-updates-setup.outputs.branch }}" }
+        shell: bash
+        run: |-
+          set -euo pipefail
+          test -f bar
+
+      - name: "Assert: Has pull request"
+        env:
+          GH_TOKEN: ${{ steps.checkout.outputs.token }}
+        shell: bash
+        run: |-
+          set -euo pipefail
+          gh pr view
+
+  test-when-has-updates-cleanup:
+    name: "When Has Updates (Cleanup)"
+    runs-on: ubuntu-latest
+    if: "${{ always() }}"
+    needs:
+      - test-when-has-updates-setup
+      - test-when-has-updates-run
+      - test-when-has-updates
+    steps:
+      - uses: $/checkout-as-app
+        with:
+          ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+          ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          repository: ${{ env.TEST_REPO }}
+          ref: ${{ needs.test-when-has-updates-setup.outputs.branch }}
+
+      - name: "Cleanup"
+        if: "${{ always() }}"
+        env: { BRANCH: "${{ needs.test-when-has-updates-setup.outputs.branch }}" }
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git push origin --delete "${BRANCH}" || true
+          git push origin --delete "${BRANCH}-scripts" || true
+          git push origin --delete "${BRANCH}-pr" || true

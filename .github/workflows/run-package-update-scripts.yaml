@@ -1,0 +1,363 @@
+name: Package Updates
+
+on:
+  workflow_call:
+    inputs:
+      scripts:
+        description: "The scripts to run. One per line."
+        type: string
+        required: true
+
+      base-branch:
+        description: "The base branch of the update PR."
+        type: string
+        required: true
+
+      pr-branch:
+        description: "The branch containing the update commits."
+        type: string
+        required: true
+
+      pr-title:
+        description: "The pull request title."
+        type: string
+        required: true
+
+      pr-body:
+        description: "The pull request body."
+        type: string
+        required: true
+
+      pr-labels:
+        description: "The pull request labels."
+        type: string
+        required: true
+
+      repository:
+        description: "The repo to perform the update in. Defaults to the current repo."
+        type: string
+        required: false
+        default: ""
+
+      script-branch:
+        description: "The branch containing the update scripts. Defaults to the base branch."
+        type: string
+        required: false
+        default: ""
+
+      script-exec:
+        description: "Bash command to run the update script. The script is provided as the $SCRIPT variable."
+        type: string
+        required: false
+        default: |-
+          "${SCRIPTS_WORKSPACE}/${SCRIPT}"
+
+      auth-with-ghapp:
+        description: "If true, auths using a GitHub app."
+        type: string
+        required: false
+        default: "false"
+
+    secrets:
+      ghapp-client-id:
+        description: "The client ID of a GitHub app installed in the remote repo."
+        required: false
+
+      ghapp-private-key:
+        description: "The private key of a GitHub app installed in the remote repo."
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare:
+    name: "Prepare"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      matrix: ${{ steps.vars.outputs.matrix }}
+      script-branch: ${{ steps.vars.outputs.script-branch }}
+      flake-ref: ${{ steps.vars.outputs.flake-ref }}
+    steps:
+      # Checkout the repo branch either via GITHUB_TOKEN or GitHub App.
+      - name: Checkout
+        if: ${{ inputs.auth-with-ghapp != 'true' }}
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.base-branch }}
+      - name: Checkout (via GitHub App)
+        if: ${{ inputs.auth-with-ghapp == 'true' }}
+        uses: $/checkout-as-app
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.base-branch }}
+          ghapp-client-id: ${{ secrets.ghapp-client-id }}
+          ghapp-private-key: ${{ secrets.ghapp-private-key }}
+
+      # Rebase the PR branch onto the base to ensure it's mergeable.
+      - name: Rebase '${{ inputs.pr-branch }}' onto '${{ inputs.base-branch }}'
+        uses: $/rebase-branch
+        with:
+          base: "${{ inputs.base-branch }}"
+          branch: "${{ inputs.pr-branch }}"
+          create-branch: true
+
+      # Prepare variables for later steps.
+      - name: Prepare Variables
+        id: vars
+        shell: bash
+        env:
+          SCRIPTS: ${{ inputs.scripts }}
+          SCRIPT_BRANCH: ${{ inputs.script-branch }}
+          BASE_BRANCH: ${{ inputs.base-branch }}
+          PR_BRANCH: ${{ inputs.pr-branch }}
+          DEVELOP_FLAKE: ${{ inputs.develop-flake }}
+        run: |-
+          set -euo pipefail
+
+          matrix=$(
+            sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; /^$/d; /^#/d' <<<"$SCRIPTS" \
+              | jq -c --raw-input --slurp 'split("\n") | map(select(. != ""))'
+          )
+
+          script_branch_coalesced="${SCRIPT_BRANCH}"
+          if [[ -z "$script_branch_coalesced" ]]; then
+            script_branch_coalesced="${BASE_BRANCH}"
+          fi
+
+          # Adjust the flake ref to use the flake within the scripts branch.
+          flake_ref="${DEVELOP_FLAKE}"
+          case "$flake_ref" in
+            .) flake_ref="./scripts-branch" ;;
+            ./*) flake_ref="./scripts-branch/${flake_ref:2}" ;;
+            path:*) flake_ref="path:scripts-branch/${flake_ref:5}" ;;
+          esac
+
+          {
+            echo "matrix=${matrix}"
+            echo "script-branch=${script_branch_coalesced}"
+            echo "flake-ref=${flake_ref}"
+          } >>"$GITHUB_OUTPUT"
+
+  # Run the update scripts.
+  update:
+    name: "Update Script"
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        script: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    steps:
+      # Checkout the PR branch.
+      - name: Checkout '${{ inputs.pr-branch }}'
+        if: ${{ inputs.auth-with-ghapp != 'true' }}
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.pr-branch }}
+          path: pr-branch
+      - name: Checkout '${{ inputs.pr-branch }}' (via GitHub App)
+        if: ${{ inputs.auth-with-ghapp == 'true' }}
+        uses: $/checkout-as-app
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.pr-branch }}
+          path: pr-branch
+          ghapp-client-id: ${{ secrets.ghapp-client-id }}
+          ghapp-private-key: ${{ secrets.ghapp-private-key }}
+
+      # Checkout the script branch.
+      - name: Checkout '${{ needs.prepare.outputs.script-branch }}'
+        if: ${{ inputs.auth-with-ghapp != 'true' }}
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ needs.prepare.outputs.script-branch }}
+          path: scripts-branch
+      - name: Checkout '${{ needs.prepare.outputs.script-branch }}' (via GitHub App)
+        if: ${{ inputs.auth-with-ghapp == 'true' }}
+        uses: $/checkout-as-app
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ needs.prepare.outputs.script-branch }}
+          path: scripts-branch
+          ghapp-client-id: ${{ secrets.ghapp-client-id }}
+          ghapp-private-key: ${{ secrets.ghapp-private-key }}
+
+      # Ensure git has a user and email configured.
+      - name: Set up git config
+        shell: bash
+        run: |-
+          set -euo pipefail
+          cd pr-branch
+          if ! git config --local user.name; then
+            git config --local user.name "github-actions[bot]"
+            git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          fi
+
+      # Set up nix develop profile.
+      - name: Set up nix develop
+        id: nix-develop
+        if: ${{ needs.prepare.outputs.flake-ref != '' }}
+        uses: $/nix-flake-develop
+        with:
+          flake: ${{ needs.prepare.outputs.flake-ref }}
+
+      # Run the update script.
+      - name: Run the update script
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FLAKE_PROFILE: ${{ steps.nix-develop.outputs.activate-bash }}
+          SCRIPT: ${{ matrix.script }}
+          UPDATE_WORKSPACE: ${{ github.workspace }}/pr-branch
+          SCRIPTS_WORKSPACE: ${{ github.workspace }}/scripts-branch
+        run: |-
+          set -euo pipefail
+
+          # shellcheck disable=SC1090
+          if [[ -n "${FLAKE_PROFILE}" ]]; then
+            source "${FLAKE_PROFILE}"
+          fi
+
+          # Run the script.
+          cd "$UPDATE_WORKSPACE"
+          ${{ inputs.script-exec }}
+
+      # Export changes as git patches.
+      - name: Export the commits
+        id: export
+        env:
+          FLAKE_PROFILE: ${{ steps.nix-develop.outputs.activate-bash }}
+          PR_BRANCH: ${{ inputs.pr-branch }}
+        run: |-
+          set -euo pipefail
+          cd pr-branch
+
+          prev_sha=$(git rev-parse "refs/remotes/origin/${PR_BRANCH}")
+          current_sha=$(git rev-parse "HEAD")
+
+          if [[ "${prev_sha}" = "${current_sha}" ]]; then
+            echo "Nothing to update."
+            echo "has-changes=false" >>"$GITHUB_OUTPUT"
+          else
+            git format-patch -o "$GITHUB_WORKSPACE" "$prev_sha"
+            echo "has-changes=true" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload patches
+        if: "${{ steps.export.outputs.has-changes == 'true' }}"
+        uses: actions/upload-artifact@v7
+        with:
+          name: "updates-${{ matrix.script }}"
+          path: "*.patch"
+
+  # Collect the patches, apply them, and push them to the PR branch.
+  push:
+    name: "Push"
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - update
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # Checkout the PR branch either via GITHUB_TOKEN or GitHub App.
+      - name: Checkout '${{ inputs.pr-branch }}'
+        if: ${{ inputs.auth-with-ghapp != 'true' }}
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.pr-branch }}
+          path: pr-branch
+      - name: Checkout '${{ inputs.pr-branch }}' (via GitHub App)
+        if: ${{ inputs.auth-with-ghapp == 'true' }}
+        id: ghapp-checkout
+        uses: $/checkout-as-app
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.pr-branch }}
+          path: pr-branch
+          ghapp-client-id: ${{ secrets.ghapp-client-id }}
+          ghapp-private-key: ${{ secrets.ghapp-private-key }}
+
+      # Ensure git has a user and email configured.
+      - name: Set up git config
+        shell: bash
+        run: |-
+          set -euo pipefail
+          cd pr-branch
+          if ! git config --local user.name; then
+            git config --local user.name "github-actions[bot]"
+            git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          fi
+
+      - name: Download patches
+        uses: actions/download-artifact@v7
+        with:
+          pattern: "updates-*"
+          path: patches
+
+      - name: Apply commits
+        id: apply-commits
+        shell: bash
+        run: |-
+          set -euo pipefail
+          mkdir -p patches
+
+          if read -r _ < <(find patches -iname '*.patch'); then
+            cd pr-branch
+            find ../patches -iname '*.patch' \
+              | sort \
+              | xargs --no-run-if-empty git am
+
+            echo "applied=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "Nothing to apply."
+            echo "applied=false" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Push commits
+        if: "${{ steps.apply-commits.outputs.applied == 'true' }}"
+        shell: bash
+        run: |-
+          set -euo pipefail
+          cd pr-branch
+          git push
+
+      - name: Prepare pull request
+        if: "${{ steps.apply-commits.outputs.applied == 'true' }}"
+        id: prepare-pr
+        shell: bash
+        env:
+          AUTH_WITH_GHAPP: ${{ inputs.auth-with-ghapp }}
+          GH_TOKEN: ${{ github.token }}
+          GHAPP_TOKEN: ${{ steps.ghapp-checkout.outputs.token }}
+        run: |-
+          set -euo pipefail
+          if [[ "$AUTH_WITH_GHAPP" = true ]]; then
+            echo "token=$GHAPP_TOKEN" >>"$GITHUB_OUTPUT"
+          else
+            echo "token=$GH_TOKEN" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Create pull request
+        if: "${{ steps.apply-commits.outputs.applied == 'true' }}"
+        uses: $/update-pr
+        with:
+          github-token: ${{ steps.prepare-pr.outputs.token }}
+          repository: ${{ inputs.repository }}
+          create-pr: true
+          base: ${{ inputs.base-branch }}
+          head: ${{ inputs.pr-branch }}
+          title: ${{ inputs.pr-title }}
+          body: ${{ inputs.pr-body }}
+          labels: ${{ inputs.pr-labels }}
