@@ -1,0 +1,62 @@
+name: "Setup Environments"
+description: "Sets up a 'nix develop' shell and profile."
+inputs:
+  flake:
+    description: "The flake ref."
+    required: false
+    default: "."
+
+  install-nix:
+    description: "Whether nix should be installed by this action."
+    required: false
+    default: "auto"
+
+  update-path:
+    description: "Whether to update the PATH."
+    required: false
+    default: "true"
+
+outputs:
+  activate-bash:
+    description: "Path to file that can be sourced to enter the develop environment."
+    value: "${{ steps.create-profile.outputs.activate-bash }}"
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Check if nix needs to be installed"
+      if: ${{ inputs.install-nix == 'auto' }}
+      id: needs-nix
+      shell: bash
+      run: |-
+        if ! command -v nix &>/dev/null; then
+          echo "Nix needs to be installed."
+          echo "result=true" >>"$GITHUB_OUTPUT"
+        fi
+
+    - name: "Install nix"
+      if: ${{ inputs.install-nix == 'true' || steps.needs-nix.outputs.result == 'true' }}
+      uses: cachix/install-nix-action@v31.11.0
+
+    - name: "Create flake develop profile"
+      id: create-profile
+      shell: bash
+      env:
+        FLAKE: "${{ inputs.flake }}"
+      run: |-
+        set -euo pipefail
+        file=$(mktemp --suffix '.bash')
+        printf "activate-bash=%s\n" "$file" >>"$GITHUB_OUTPUT"
+        nix print-dev-env "$FLAKE" >"$file"
+
+    - name: "Update PATH"
+      if: ${{ inputs.update-path == 'true' }}
+      shell: bash
+      env:
+        PROFILE_FILE: "${{ steps.create-profile.outputs.activate-bash }}"
+      run: |-
+        set -euo pipefail
+
+        #shellcheck disable=SC1090
+        source "$PROFILE_FILE"
+        tr ':' '\n' <<<"$PATH" >>"$GITHUB_PATH"

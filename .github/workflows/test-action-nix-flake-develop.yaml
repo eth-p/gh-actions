@@ -1,0 +1,52 @@
+name: "Test Action: nix-flake-develop"
+
+on:
+  push:
+    paths: &paths
+      - .github/workflows/test-action-create-ci-branch.yaml
+      - nix-flake-develop/**
+      - test-data/nix-flake/**
+  pull_request:
+    paths: *paths
+
+env:
+  TEST_REPO: eth-p/gh-actions-test-repo
+
+jobs:
+  test-with-defaults:
+    name: "Test Develop Profile"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: action
+        uses: $/nix-flake-develop
+        with:
+          flake: ./test-data/nix-flake
+
+      - name: "Output: activate-bash"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.activate-bash }}" }
+        run: |-
+          set -euo pipefail
+          test -n "$OUTPUT"
+
+      - name: "Assert: Executables added to PATH"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.activate-bash }}" }
+        run: |-
+          set -euo pipefail
+
+          if ! [[ $(command -v hello) =~ ^/nix/ ]]; then
+            printf "\x1B[31mhello command is not under nix store\x1B[m\n"
+            exit 1
+          fi
+
+      - name: "Assert: Can source develop profile"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.activate-bash }}" }
+        run: |-
+          set -euo pipefail
+
+          # shellcheck disable=SC1090
+          source "$OUTPUT"
