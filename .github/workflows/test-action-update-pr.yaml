@@ -1,0 +1,263 @@
+name: "Test Action: update-pr"
+
+on:
+  push:
+    paths: &paths
+      - .github/workflows/test-action-update-pr.yaml
+      - update-pr/**
+      - create-ci-branch/** # test dependency
+      - checkout-as-app/** # test dependency
+  pull_request:
+    paths: *paths
+
+env:
+  TEST_REPO: eth-p/gh-actions-test-repo
+
+jobs:
+  meta:
+    name: "Passed - update-pr"
+    runs-on: ubuntu-latest
+    steps: [{ run: "true" }]
+    needs:
+      - test-when-nothing-to-merge
+      - test-updates-pr
+      - test-creates-pr
+
+  test-when-nothing-to-merge:
+    name: "When Nothing to Merge"
+    runs-on: ubuntu-latest
+    steps:
+      - id: test-branch
+        uses: $/create-ci-branch
+        with:
+          ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+          ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          repository: ${{ env.TEST_REPO }}
+
+      - name: "Setup"
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git checkout -b "${BRANCH}-pr"
+          git push origin "${BRANCH}-pr"
+
+      - id: action
+        uses: $/update-pr
+        with:
+          github-token: ${{ steps.test-branch.outputs.token }}
+          repository: ${{ env.TEST_REPO }}
+          base: ${{ steps.test-branch.outputs.branch }}
+          head: ${{ steps.test-branch.outputs.branch }}-pr
+          title: "Test PR: ${{ github.workflow }}"
+          body: ${{ steps.test-branch.outputs.banner }}
+          labels: ci
+
+      - name: "Output: number (should be empty)"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.number }}" }
+        run: |-
+          set -euo pipefail
+          test -z "$OUTPUT"
+
+      - name: "Output: url (should be empty)"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.url }}" }
+        run: |-
+          set -euo pipefail
+          test -z "$OUTPUT"
+
+      - name: "Cleanup"
+        if: "${{ always() }}"
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git push origin --delete "${BRANCH}"
+          git push origin --delete "${BRANCH}-pr"
+
+  test-updates-pr:
+    name: "Updates Existing PR"
+    runs-on: ubuntu-latest
+    steps:
+      - id: test-branch
+        uses: $/create-ci-branch
+        with:
+          ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+          ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          repository: ${{ env.TEST_REPO }}
+
+      - name: "Setup"
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git checkout -b "${BRANCH}-pr"
+
+          # Create a commit.
+          touch new-file
+          git add new-file
+          git commit -m 'ci: Add new file'
+          git push origin "${BRANCH}-pr"
+
+      - name: "Create PR"
+        id: create
+        uses: $/update-pr
+        with:
+          github-token: ${{ steps.test-branch.outputs.token }}
+          repository: ${{ env.TEST_REPO }}
+          base: ${{ steps.test-branch.outputs.branch }}
+          head: ${{ steps.test-branch.outputs.branch }}-pr
+          labels: ci
+          title: "${{ github.workflow }} - ${{ github.job }}"
+          body: |-
+            ${{ steps.test-branch.outputs.banner }}
+            Job: ${{ github.job }}
+
+      - name: "Update PR"
+        id: action
+        uses: $/update-pr
+        with:
+          github-token: ${{ steps.test-branch.outputs.token }}
+          repository: ${{ env.TEST_REPO }}
+          base: ${{ steps.test-branch.outputs.branch }}
+          head: ${{ steps.test-branch.outputs.branch }}-pr
+          title: "${{ github.workflow }} - ${{ github.job }} <UPDATED>"
+          body: |-
+            ${{ steps.test-branch.outputs.banner }}
+            Job: ${{ github.job }} <UPDATED>
+          labels: |-
+            ci
+            test
+
+      - name: "Assert: PR Exists"
+        shell: bash
+        env:
+          PR_NUMBER: "${{ steps.action.outputs.number }}"
+          GH_TOKEN: "${{ steps.test-branch.outputs.token }}"
+          REPO: "${{ env.TEST_REPO }}"
+        run: |-
+          set -euo pipefail
+          gh pr view --repo "$REPO" "$PR_NUMBER"
+
+      - name: "Assert: PR Title Updated"
+        shell: bash
+        env:
+          PR_NUMBER: "${{ steps.action.outputs.number }}"
+          GH_TOKEN: "${{ steps.test-branch.outputs.token }}"
+          REPO: "${{ env.TEST_REPO }}"
+        run: |-
+          set -euo pipefail
+          title=$(gh pr view --repo "$REPO" "$PR_NUMBER" --json title | jq -r '.title')
+          sed 's/^/│ /' <<<"$title"
+          grep -F "<UPDATED>" <<<"$title"
+
+      - name: "Assert: PR Body Updated"
+        shell: bash
+        env:
+          PR_NUMBER: "${{ steps.action.outputs.number }}"
+          GH_TOKEN: "${{ steps.test-branch.outputs.token }}"
+          REPO: "${{ env.TEST_REPO }}"
+        run: |-
+          set -euo pipefail
+          title=$(gh pr view --repo "$REPO" "$PR_NUMBER" --json body | jq -r '.body')
+          sed 's/^/│ /' <<<"$title"
+          grep -F "<UPDATED>" <<<"$title"
+
+      - name: "Output: number"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.number }}" }
+        run: |-
+          set -euo pipefail
+          test -n "$OUTPUT"
+
+      - name: "Output: url"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.url }}" }
+        run: |-
+          set -euo pipefail
+          test -n "$OUTPUT"
+
+      - name: "Output: title"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.title }}" }
+        run: |-
+          set -euo pipefail
+          test -n "$OUTPUT"
+
+      - name: "Output: body-file"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.body-file }}" }
+        run: |-
+          set -euo pipefail
+          test -n "$OUTPUT"
+          test "$(wc -c <"$OUTPUT")" -ne 0
+
+      - name: "Cleanup"
+        if: "${{ always() }}"
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git push origin --delete "${BRANCH}"
+          git push origin --delete "${BRANCH}-pr"
+
+  test-creates-pr:
+    name: "Creates New PR"
+    runs-on: ubuntu-latest
+    steps:
+      - id: test-branch
+        uses: $/create-ci-branch
+        with:
+          ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+          ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          repository: ${{ env.TEST_REPO }}
+
+      - name: "Setup"
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git checkout -b "${BRANCH}-pr"
+
+          # Create a commit.
+          touch new-file
+          git add new-file
+          git commit -m 'ci: Add new file'
+          git push origin "${BRANCH}-pr"
+
+      - id: action
+        uses: $/update-pr
+        with:
+          github-token: ${{ steps.test-branch.outputs.token }}
+          repository: ${{ env.TEST_REPO }}
+          base: ${{ steps.test-branch.outputs.branch }}
+          head: ${{ steps.test-branch.outputs.branch }}-pr
+          labels: ci
+          title: "${{ github.workflow }} - ${{ github.job }}"
+          body: |-
+            ${{ steps.test-branch.outputs.banner }}
+            Job: ${{ github.job }}
+
+      - name: "Output: number"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.number }}" }
+        run: |-
+          set -euo pipefail
+          test -n "$OUTPUT"
+
+      - name: "Output: url"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.url }}" }
+        run: |-
+          set -euo pipefail
+          test -n "$OUTPUT"
+
+      - name: "Cleanup"
+        if: "${{ always() }}"
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git push origin --delete "${BRANCH}"
+          git push origin --delete "${BRANCH}-pr"

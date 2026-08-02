@@ -1,0 +1,292 @@
+name: " Update Pull Request"
+description: "Updates a pull request, creating one if it doesn't exist."
+inputs:
+  repository:
+    description: "Repository name with owner. For example, actions/checkout."
+    default: ""
+    required: false
+
+  base:
+    description: "The base branch to merge into."
+    required: true
+
+  head:
+    description: "The head branch with the commits to merge."
+    required: true
+
+  title:
+    description: "The pull request title."
+    required: true
+
+  body:
+    description: "The pull request body."
+    required: true
+
+  labels:
+    description: "Labels to add to the pull request. One per line."
+    default: ""
+    required: false
+
+  create-pr:
+    description: "If set to true, will create the pull request if it does not exist."
+    default: "true"
+    required: false
+
+  github-token:
+    description: "The GitHub Token to use for authorization."
+    default: ""
+    required: false
+
+outputs:
+  number:
+    description: "The pull request number."
+    value: ${{ steps.update-pr.outputs.number }}
+
+  url:
+    description: "The pull request URL."
+    value: ${{ steps.update-pr.outputs.url }}
+
+  title:
+    description: "The pull request title."
+    value: "${{ steps.update-pr.outputs.title }}"
+
+  body-file:
+    description: "Path to a file containing the pull request body."
+    value: "${{ steps.update-pr.outputs.body-file }}"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Prepare authorization
+      id: auth
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |-
+        set -euo pipefail
+        if [[ -n "$INPUT_GITHUB_TOKEN" ]]; then
+          echo "token=$INPUT_GITHUB_TOKEN" >>"$GITHUB_OUTPUT"
+          echo "Using GH_TOKEN from action input."
+        else
+          echo "token=$GITHUB_TOKEN" >>"$GITHUB_OUTPUT"
+          echo "Using GH_TOKEN from context."
+        fi
+
+    - name: Find existing pull request
+      id: existing
+      uses: actions/github-script@v8
+      env:
+        PR_REPO: ${{ inputs.repository }}
+        PR_HEAD: ${{ inputs.head }}
+        PR_BASE: ${{ inputs.base }}
+      with:
+        github-token: ${{ steps.auth.outputs.token }}
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          const env = process.env;
+          const [owner, repo] = env.PR_REPO.split("/", 2);
+          const response = await github.rest.pulls.list({
+            owner,
+            repo,
+            head: env.PR_HEAD,
+            base: env.PR_BASE
+          });
+
+          if (response.data.length < 1) {
+            core.setOutput('exists', false);
+            console.log('No existing PR.');
+            return;
+          }
+
+          const pr = response.data[0];
+          console.log(`Found existing PR: #${response.data[0].number}`);
+
+          // Create a tempdir for storing large files.
+          const tempdirPrefix = path.join(process.env.RUNNER_TEMP || os.tmpdir(), `pr-${pr.number}-`);
+          const tempdir = fs.mkdtempSync(tempdirPrefix);
+
+          // Save the body.
+          const bodyFile = path.join(tempdir, 'body.md');
+          fs.writeFileSync(bodyFile, pr.body, 'utf8');
+
+          // Set outputs.
+          core.setOutput('exists', true);
+          core.setOutput('number', pr.number);
+          core.setOutput('labels', pr.labels.map(label => label.name).join("\n"));
+          core.setOutput('url', pr.html_url);
+          core.setOutput('body-file', bodyFile);
+
+    - name: Create pull request
+      if: ${{ steps.existing.outputs.exists != 'true' && inputs.create-pr == 'true' }}
+      id: create
+      uses: actions/github-script@v8
+      env:
+        PR_REPO: ${{ inputs.repository }}
+        PR_HEAD: ${{ inputs.head }}
+        PR_BASE: ${{ inputs.base }}
+        PR_TITLE: ${{ inputs.title }}
+        PR_BODY: ${{ inputs.body }}
+        PR_LABELS: ${{ inputs.labels }}
+      with:
+        github-token: ${{ steps.auth.outputs.token }}
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          const env = process.env;
+          const [owner, repo] = env.PR_REPO.split("/", 2);
+
+          const [base_ref, head_ref] = await Promise.all([
+            github.rest.git.getRef({
+              owner,
+              repo,
+              ref: `heads/${env.PR_BASE}`,
+            }),
+            github.rest.git.getRef({
+              owner,
+              repo,
+              ref: `heads/${env.PR_HEAD}`,
+            }),
+          ]);
+
+          if (base_ref.data.object.sha === head_ref.data.object.sha) {
+            console.log("No need to create pull request.");
+            console.log(`Branches '${env.PR_BASE}' and '${env.PR_HEAD}' point to the same commit.`);
+            return;
+          }
+
+          const response = await github.rest.pulls.create({
+            owner,
+            repo,
+            head: env.PR_HEAD,
+            base: env.PR_BASE,
+            title: env.PR_TITLE,
+            body: env.PR_BODY,
+          });
+
+          const pr = response.data;
+          console.log(`Created PR #${pr.number}: ${pr.html_url}`);
+
+          // Create a tempdir for storing large files.
+          const tempdirPrefix = path.join(process.env.RUNNER_TEMP || os.tmpdir(), `pr-${pr.number}-`);
+          const tempdir = fs.mkdtempSync(tempdirPrefix);
+
+          // Save the body.
+          const bodyFile = path.join(tempdir, 'body.md');
+          fs.writeFileSync(bodyFile, pr.body, 'utf8');
+
+          // Set outputs.
+          core.setOutput('exists', true);
+          core.setOutput('number', pr.number);
+          core.setOutput('url', pr.html_url);
+          core.setOutput('body-file', bodyFile);
+
+    - name: Update pull request
+      if: ${{ steps.existing.outputs.number != '' || steps.create.outputs.number != '' }}
+      id: update-pr
+      uses: actions/github-script@v8
+      env:
+        EXISTING_PR_EXISTS: ${{ steps.existing.outputs.exists }}
+        EXISTING_PR_NUMBER: ${{ steps.existing.outputs.number }}
+        EXISTING_PR_LABELS: ${{ steps.existing.outputs.labels }}
+        EXISTING_PR_TITLE: ${{ steps.existing.outputs.title }}
+        EXISTING_PR_BODY_FILE: ${{ steps.existing.outputs.body-file }}
+        EXISTING_PR_URL: ${{ steps.existing.outputs.url }}
+        CREATED_PR_NUMBER: ${{ steps.create.outputs.number }}
+        CREATED_PR_URL: ${{ steps.create.outputs.url }}
+        PR_REPO: ${{ inputs.repository }}
+        SET_TITLE: ${{ inputs.title }}
+        SET_BODY: ${{ inputs.body }}
+      with:
+        github-token: ${{ steps.auth.outputs.token }}
+        script: |
+          const fs = require('fs');
+          const env = process.env;
+          const [owner, repo] = env.PR_REPO.split("/", 2);
+          const pull_number = env.EXISTING_PR_NUMBER || env.CREATED_PR_NUMBER;
+          const pull_url = env.EXISTING_PR_URL || env.CREATED_PR_URL;
+          const body_file = env.EXISTING_PR_BODY_FILE || env.CREATED_PR_BODY_FILE;
+          const propsToUpdate = {};
+
+          core.setOutput('body-file', body_file);
+          core.setOutput('number', pull_number);
+          core.setOutput('url', pull_url);
+          core.setOutput('title', env.PR_TITLE);
+
+          if (env.CREATED_PR_NUMBER !== '') {
+            console.log("Nothing to update.");
+            return; // This action created the PR. It doesn't need to update it.
+          }
+
+          const existingBody = fs.readFileSync(body_file, 'utf8');
+          if (existingBody !== env.SET_BODY) {
+            console.log("Body needs to be updated.");
+            propsToUpdate.body = env.SET_BODY;
+          }
+
+          if (env.EXISTING_PR_TITLE !== env.SET_TITLE) {
+            console.log("Title needs to be updated.");
+            propsToUpdate.title = env.SET_TITLE;
+          }
+
+          // Update the PR.
+          if (Object.keys(propsToUpdate) === 0) {
+            console.log("Nothing to update.");
+            return;
+          }
+
+          const response = await github.rest.pulls.update({
+            owner,
+            repo,
+            pull_number,
+            ...propsToUpdate,
+          });
+
+          const pr = response.data;
+          core.setOutput('title', pr.title);
+          fs.writeFileSync(body_file, pr.body, 'utf8');
+
+    - name: Update labels
+      if: ${{ steps.existing.outputs.number != '' || steps.create.outputs.number != '' }}
+      id: update-labels
+      uses: actions/github-script@v8
+      env:
+        PR_NUMBER: ${{ steps.update-pr.outputs.number }}
+        PR_REPO: ${{ inputs.repository }}
+        EXISTING_PR_LABELS: ${{ steps.existing.outputs.labels }}
+        SET_LABELS: ${{ inputs.labels }}
+      with:
+        github-token: ${{ steps.auth.outputs.token }}
+        script: |
+          const env = process.env;
+          const [owner, repo] = env.PR_REPO.split("/", 2);
+
+          function linesToList(lines) {
+            return lines
+              .split("\n")
+              .map(line => line.trim())
+              .filter(line => !line.startsWith('#'))
+              .filter(line => line !== '');
+          }
+
+          if (env.SET_LABELS == null || env.SET_LABELS === '') {
+            console.log("Skipping - labels input is empty.");
+            return;
+          }
+
+          const existingLabels = new Set(linesToList(env.EXISTING_PR_LABELS ?? ""));
+          const newLabels = new Set(linesToList(env.SET_LABELS ?? ""));
+
+          if (existingLabels.size === newLabels.size && (existingLabels.difference(newLabels).size === 0)) {
+            console.log("Nothing to update.");
+            return;
+          }
+
+          console.log("Labels need to be updated.");
+          await github.rest.issues.setLabels({
+            owner,
+            repo,
+            issue_number: env.PR_NUMBER,
+            labels: Array.from(newLabels),
+          });
