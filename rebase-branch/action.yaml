@@ -1,0 +1,156 @@
+name: "Rebase Branch"
+description: "Rebases a branch and pushes it back to the repo."
+inputs:
+  branch:
+    description: "The branch to rebase."
+    required: true
+
+  base:
+    description: "The base branch."
+    required: true
+
+  path:
+    description: "Relative path under $GITHUB_WORKSPACE of the repository"
+    required: false
+    default: "."
+
+  create-branch:
+    description: "Creates the branch if it does not exist."
+    required: false
+    default: "true"
+
+  fetch-depth:
+    description: "If the merge base can't be identified, unshallow by this many commits"
+    required: false
+    default: "15"
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Check if branch '${{ inputs.branch }}' exists"
+      id: branch-exists
+      shell: bash
+      env:
+        REPO_PATH: "${{ inputs.path }}"
+        BRANCH: "${{ inputs.branch }}"
+      run: |-
+        set -euo pipefail
+        cd "$REPO_PATH"
+        if [[ -n "$(git -C "$REPO_PATH" ls-remote origin "refs/heads/${BRANCH}")" ]]; then
+          echo "Branch exists."
+          printf "exists=true\n" >>"$GITHUB_OUTPUT"
+        else
+          echo "Branch does not exist."
+          printf "exists=false\n" >>"$GITHUB_OUTPUT"
+        fi
+
+    - name: "Create branch from '${{ inputs.base }}'"
+      if: ${{ steps.branch-exists.outputs.exists == 'false' && inputs.create-branch == 'true' }}
+      shell: bash
+      env:
+        REPO_PATH: "${{ inputs.path }}"
+        BRANCH: "${{ inputs.branch }}"
+        BASE: "${{ inputs.base }}"
+      run: |-
+        set -euo pipefail
+        cd "$REPO_PATH"
+
+        echo "::group::Fetch from remote"
+        git fetch --depth=1 origin "$BASE"
+        echo "::endgroup::"
+
+        git branch "$BRANCH" "refs/remotes/origin/${BASE}"
+        git push origin "$BRANCH:$BRANCH"
+
+    - name: "Fetch branches"
+      if: ${{ steps.branch-exists.outputs.exists == 'true' }}
+      shell: bash
+      env:
+        REPO_PATH: "${{ inputs.path }}"
+        BRANCH: "${{ inputs.branch }}"
+        BASE: "${{ inputs.base }}"
+      run: |-
+        set -euo pipefail
+        git -C "$REPO_PATH" fetch --depth=1 origin "$BRANCH" "$BASE"
+
+    - name: "Check if branch needs rebasing"
+      if: ${{ steps.branch-exists.outputs.exists == 'true' }}
+      id: branch-needs-rebase
+      shell: bash
+      env:
+        REPO_PATH: "${{ inputs.path }}"
+        BRANCH: "${{ inputs.branch }}"
+        BASE: "${{ inputs.base }}"
+      run: |-
+        set -euo pipefail
+        branch_commit=$(git -C "$REPO_PATH" rev-parse "refs/remotes/origin/${BRANCH}")
+        base_commit=$(git -C "$REPO_PATH" rev-parse "refs/remotes/origin/${BASE}")
+        if [[ "$branch_commit" = "$base_commit" ]]; then
+          printf "\x1B[32mBranch does not need to be rebased.\x1B[m\n"
+          printf "result=false\n" >>"$GITHUB_OUTPUT"
+        else
+          printf "result=true\n" >>"$GITHUB_OUTPUT"
+        fi
+
+    - name: "Find common ancestor"
+      if: ${{ steps.branch-needs-rebase.outputs.result == 'true' }}
+      id: find-merge-base
+      shell: bash
+      env:
+        REPO_PATH: "${{ inputs.path }}"
+        BRANCH: "${{ inputs.branch }}"
+        BASE: "${{ inputs.base }}"
+        FETCH_DEPTH: "${{ inputs.fetch-depth }}"
+      run: |-
+        set -euo pipefail
+        cd "${REPO_PATH}"
+
+        find_ancestor() {
+          git merge-base \
+            "refs/remotes/origin/${BRANCH}" \
+            "refs/remotes/origin/${BASE}"
+        }
+
+        while true; do
+          if ancestor=$(find_ancestor); then
+            printf "Found common ancestor: %s\n" "${ancestor}"
+            printf "commit=${ancestor}\n" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$(git rev-parse --is-shallow-repository)" != "true" ]]; then
+            printf "\x1B[31mCould not find common ancestor between '%s' and '%s'\x1B[m\n" \
+              "$BRANCH" "$BASE"
+            exit 1
+          fi
+
+          echo "::group::Fetching more commits from remote"
+          git fetch --deepen="${FETCH_DEPTH}" origin "$BRANCH" "$BASE"
+          echo "::endgroup::"
+        done
+
+    - name: "Rebase branch"
+      if: ${{ steps.branch-needs-rebase.outputs.result == 'true' }}
+      shell: bash
+      env:
+        REPO_PATH: "${{ inputs.path }}"
+        BRANCH: "${{ inputs.branch }}"
+        BASE: "${{ inputs.base }}"
+      run: |-
+        set -euo pipefail
+        cd "${REPO_PATH}"
+
+        # Go back to the current branch after performing the rebase.
+        current_branch=$(git rev-parse --abbrev-ref HEAD)
+        cleanup() {
+          git rebase --abort || true
+          git checkout "$current_branch"
+        }
+        trap cleanup EXIT
+
+        # Perform the rebase.
+        git branch -f "$BRANCH" "refs/remotes/origin/${BRANCH}"
+        git branch --set-upstream-to="origin/${BRANCH}" "$BRANCH"
+        git checkout "$BRANCH"
+        git rebase "refs/remotes/origin/${BASE}"
+        git push --force-with-lease

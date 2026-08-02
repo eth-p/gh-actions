@@ -1,0 +1,363 @@
+name: "Test Action: rebase-branch"
+
+on:
+  push:
+    paths: &paths
+      - .github/workflows/test-action-rebase-branch.yaml
+      - rebase-branch/**
+      - create-ci-branch/** # dependency
+      - checkout-as-app/** # dependency
+  pull_request:
+    paths: *paths
+
+env:
+  TEST_REPO: eth-p/gh-actions-test-repo
+
+jobs:
+  test-when-diverged-safely:
+    name: "When Diverged From Base"
+    runs-on: ubuntu-latest
+    steps:
+      - id: test-branch
+        uses: $/create-ci-branch
+        with:
+          ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+          ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          repository: ${{ env.TEST_REPO }}
+
+      - name: "Setup"
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git checkout -b "${BRANCH}-target"
+
+          # Move base branch ahead of target branch
+          git checkout "${BRANCH}"
+          echo "Test" >file-in-base.txt
+          git add file-in-base.txt
+          git commit -m "Add file in base"
+          git push origin "${BRANCH}"
+
+          # Move target branch ahead of common ancestor
+          git checkout "${BRANCH}-target"
+          echo "Test" >file-in-target.txt
+          git add file-in-target.txt
+          git commit -m "Add file in target"
+          git push origin "${BRANCH}-target"
+
+      - name: "Remove local branches"
+        shell: bash
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        run: |-
+          set -euo pipefail
+          git fetch --depth=1 origin master
+          git checkout master
+          git branch -D "${BRANCH}" "${BRANCH}-target"
+
+      - id: action
+        uses: $/rebase-branch
+        with:
+          base: ${{ steps.test-branch.outputs.branch }}
+          branch: ${{ steps.test-branch.outputs.branch }}-target
+          create-branch: false
+
+      - name: "Assert: Target branch caught up to base"
+        env:
+          BRANCH: ${{ steps.test-branch.outputs.branch }}
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git fetch origin "${BRANCH}" "${BRANCH}-target"
+          git checkout "refs/remotes/origin/${BRANCH}-target"
+
+          if ! [[ -e file-in-base.txt ]]; then
+            printf "\x1B[31mChanges from base branch were lost.\x1B[m"
+            exit 1
+          fi
+
+          if ! [[ -e file-in-target.txt ]]; then
+            printf "\x1B[31mChanges from target branch were lost.\x1B[m"
+            exit 1
+          fi
+
+          if ! git merge-base --is-ancestor \
+            "refs/remotes/origin/${BRANCH}" \
+            "refs/remotes/origin/${BRANCH}-target";
+          then
+            printf "\x1B[31mBase branch is not ancestor of rebased target branch.\x1B[m"
+            exit 1
+          fi
+
+      - name: "Cleanup"
+        if: "${{ always() }}"
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git push origin --delete "${BRANCH}" || true
+          git push origin --delete "${BRANCH}-target" || true
+
+  test-when-behind:
+    name: "When Behind Base"
+    runs-on: ubuntu-latest
+    steps:
+      - id: test-branch
+        uses: $/create-ci-branch
+        with:
+          ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+          ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          repository: ${{ env.TEST_REPO }}
+
+      - name: "Setup"
+        id: setup
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git checkout -b "${BRANCH}-target"
+          git push origin "${BRANCH}-target"
+
+          # Move base branch ahead of target branch
+          git checkout "${BRANCH}"
+          echo "Test" >file.txt
+          git add file.txt
+          git commit -m "Add file"
+          git push origin "${BRANCH}"
+
+          printf "commit=%s\n" "$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
+
+      - name: "Remove local branches"
+        shell: bash
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        run: |-
+          set -euo pipefail
+          git fetch --depth=1 origin master
+          git checkout master
+          git branch -D "${BRANCH}" "${BRANCH}-target"
+
+      - id: action
+        uses: $/rebase-branch
+        with:
+          base: ${{ steps.test-branch.outputs.branch }}
+          branch: ${{ steps.test-branch.outputs.branch }}-target
+          create-branch: false
+
+      - name: "Assert: Target branch caught up to base"
+        env:
+          BRANCH: ${{ steps.test-branch.outputs.branch }}
+          COMMIT: ${{ steps.setup.outputs.commit }}
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git fetch origin "${BRANCH}" "${BRANCH}-target"
+          branch_commit=$(git rev-parse "refs/remotes/origin/${BRANCH}-target")
+          base_commit=$(git rev-parse "refs/remotes/origin/${BRANCH}")
+
+          printf "%s: %s\n" \
+            "Expected" "$COMMIT" \
+            "Branch  " "$branch_commit" \
+            "Base    " "$base_commit"
+
+          if [[ "$branch_commit" != "$COMMIT" ]]; then
+            printf "\x1B[31mTarget branch did not catch up to base branch.\x1B[m"
+            exit 1
+          fi
+
+      - name: "Cleanup"
+        if: "${{ always() }}"
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git push origin --delete "${BRANCH}" || true
+          git push origin --delete "${BRANCH}-target" || true
+
+  test-when-ahead:
+    name: "When Ahead of Base"
+    runs-on: ubuntu-latest
+    steps:
+      - id: test-branch
+        uses: $/create-ci-branch
+        with:
+          ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+          ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          repository: ${{ env.TEST_REPO }}
+
+      - name: "Setup"
+        id: setup
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git checkout -b "${BRANCH}-target"
+          git push origin "${BRANCH}-target"
+
+          # Move target branch ahead of base branch
+          echo "Test" >file.txt
+          git add file.txt
+          git commit -m "Add file"
+          git push origin "${BRANCH}-target"
+
+          printf "commit=%s\n" "$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
+
+      - name: "Remove local branches"
+        shell: bash
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        run: |-
+          set -euo pipefail
+          git fetch --depth=1 origin master
+          git checkout master
+          git branch -D "${BRANCH}" "${BRANCH}-target"
+
+      - id: action
+        uses: $/rebase-branch
+        with:
+          base: ${{ steps.test-branch.outputs.branch }}
+          branch: ${{ steps.test-branch.outputs.branch }}-target
+          create-branch: false
+
+      - name: "Assert: Target branch still ahead of base"
+        env:
+          BRANCH: ${{ steps.test-branch.outputs.branch }}
+          COMMIT: ${{ steps.setup.outputs.commit }}
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git fetch origin "${BRANCH}" "${BRANCH}-target"
+          branch_commit=$(git rev-parse "refs/remotes/origin/${BRANCH}-target")
+          base_commit=$(git rev-parse "refs/remotes/origin/${BRANCH}")
+
+          printf "%s: %s\n" \
+            "Expected" "$COMMIT" \
+            "Branch  " "$branch_commit" \
+            "Base    " "$base_commit"
+
+          if [[ "$branch_commit" != "$COMMIT" ]]; then
+            printf "\x1B[31mTarget branch should not have changed.\x1B[m"
+            exit 1
+          fi
+
+      - name: "Cleanup"
+        if: "${{ always() }}"
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git push origin --delete "${BRANCH}" || true
+          git push origin --delete "${BRANCH}-target" || true
+
+  test-when-same-commit:
+    name: "When Up-to-date"
+    runs-on: ubuntu-latest
+    steps:
+      - id: test-branch
+        uses: $/create-ci-branch
+        with:
+          ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+          ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          repository: ${{ env.TEST_REPO }}
+
+      - name: "Setup"
+        id: setup
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        shell: bash
+        run: |-
+          set -euo pipefail
+          printf "commit=%s\n" "$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
+          git checkout -b "${BRANCH}-target"
+          git push origin "${BRANCH}-target"
+
+      - name: "Remove local branches"
+        shell: bash
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        run: |-
+          set -euo pipefail
+          git fetch --depth=1 origin master
+          git checkout master
+          git branch -D "${BRANCH}" "${BRANCH}-target"
+
+      - id: action
+        uses: $/rebase-branch
+        with:
+          base: ${{ steps.test-branch.outputs.branch }}
+          branch: ${{ steps.test-branch.outputs.branch }}-target
+
+      - name: "Assert: Commits unchanged"
+        env:
+          BRANCH: ${{ steps.test-branch.outputs.branch }}
+          COMMIT: ${{ steps.setup.outputs.commit }}
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git fetch origin "${BRANCH}" "${BRANCH}-target"
+          branch_commit=$(git rev-parse "refs/remotes/origin/${BRANCH}-target")
+          base_commit=$(git rev-parse "refs/remotes/origin/${BRANCH}")
+
+          printf "%s: %s\n" \
+            "Expected" "$COMMIT" \
+            "Branch  " "$branch_commit" \
+            "Base    " "$base_commit"
+
+          if [[ "$branch_commit" != "$COMMIT" ]]; then
+            printf "\x1B[31mTarget branch was changed.\x1B[m"
+            exit 1
+          fi
+
+          if [[ "$base_commit" != "$COMMIT" ]]; then
+            printf "\x1B[Base branch was changed.\x1B[m"
+            exit 1
+          fi
+
+      - name: "Cleanup"
+        if: "${{ always() }}"
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git push origin --delete "${BRANCH}" || true
+          git push origin --delete "${BRANCH}-target" || true
+
+  test-creates-branch:
+    name: "When Branch Not Exists"
+    runs-on: ubuntu-latest
+    steps:
+      - id: test-branch
+        uses: $/create-ci-branch
+        with:
+          ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+          ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          repository: ${{ env.TEST_REPO }}
+
+      - name: "Remove local branches"
+        shell: bash
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        run: |-
+          set -euo pipefail
+          git fetch --depth=1 origin master
+          git checkout master
+          git branch -D "${BRANCH}"
+
+      - id: action
+        uses: $/rebase-branch
+        with:
+          base: ${{ steps.test-branch.outputs.branch }}
+          branch: ${{ steps.test-branch.outputs.branch }}-target
+
+      - name: "Assert: Target branch created"
+        env:
+          BRANCH: ${{ steps.test-branch.outputs.branch }}
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git fetch origin "${BRANCH}" "${BRANCH}-target"
+          git rev-parse "refs/remotes/origin/${BRANCH}-target"
+
+      - name: "Cleanup"
+        if: "${{ always() }}"
+        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git push origin --delete "${BRANCH}" || true
+          git push origin --delete "${BRANCH}-target" || true
