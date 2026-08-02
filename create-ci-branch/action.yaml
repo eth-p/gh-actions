@@ -1,0 +1,105 @@
+name: "Create CI Branch"
+description: "Creates a unique branch in a remote repo."
+inputs:
+  repository:
+    description: "Repository name with owner. For example, actions/checkout."
+    required: true
+
+  ghapp-client-id:
+    description: "The client ID of a GitHub app installed in the remote repo."
+    required: true
+
+  ghapp-private-key:
+    description: "The private key of a GitHub app installed in the remote repo."
+    required: true
+
+  branch-from:
+    description: "The base branch to start from."
+    default: ""
+    required: false
+
+  branch-prefix:
+    description: "The prefix to use for generated branches."
+    default: "ci/"
+    required: false
+
+  path:
+    description: "Relative path under $GITHUB_WORKSPACE to place the repository"
+    default: "."
+    required: false
+
+outputs:
+  branch:
+    description: "The generated branch name."
+    value: ${{ steps.vars.outputs.branch }}
+
+  banner:
+    description: "A Markdown banner to refer back to the current action."
+    value: ${{ steps.vars.outputs.banner }}
+
+  git-name:
+    description: "The git user.name used to create commits."
+    value: ${{ steps.checkout.outputs.git-name }}
+
+  git-email:
+    description: "The git user.email used to create commits."
+    value: ${{ steps.checkout.outputs.git-email }}
+
+  token:
+    description: "The GitHub App's repo-scoped GITHUB_TOKEN."
+    value: ${{ steps.checkout.outputs.token }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Generate Variables"
+      id: vars
+      shell: bash
+      env:
+        BRANCH_PREFIX: ${{ inputs.branch-prefix }}
+      run: |-
+        set -euo pipefail
+        run_url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        {
+          printf "branch=%s%s\n" "$BRANCH_PREFIX" "$(uuidgen | tr -d '-')"
+          printf "run-url=%s\n" "$run_url"
+          printf "banner<<EOF\n"
+          printf "%s\n" \
+            "> [!note]" \
+            "> This branch was generated as part of a" \
+            "> [GitHub Actions run](${run_url})" \
+            "> in [${{ github.repository }}](${{ github.server_url }}/${{ github.repository }})." \
+            "" \
+            "---"
+          printf "EOF\n"
+        } >>"$GITHUB_OUTPUT"
+
+    - name: "Checkout Repo"
+      id: checkout
+      uses: $/checkout-as-app
+      with:
+        repository: ${{ inputs.repository }}
+        ghapp-client-id: ${{ inputs.ghapp-client-id }}
+        ghapp-private-key: ${{ inputs.ghapp-private-key }}
+        path: ${{ inputs.path }}
+        ref: ${{ inputs.branch-from }}
+        persist-credentials: true
+        configure-git: true
+
+    - name: "Create Branch"
+      shell: bash
+      env:
+        REPO_PATH: "${{ inputs.path }}"
+        BANNER: ${{ steps.vars.outputs.banner }}
+        BRANCH: ${{ steps.vars.outputs.branch }}
+        RUN_URL: ${{ steps.vars.outputs.run-url }}
+      run: |-
+        set -euo pipefail
+        cd "$REPO_PATH"
+
+        git checkout -b "$BRANCH"
+        cat <(cat <<<"$BANNER") README.md > README.md.new
+        mv README.md.new README.md
+        git add -u
+        git commit -m "ci: ${RUN_URL}"
+        git push origin "$BRANCH"

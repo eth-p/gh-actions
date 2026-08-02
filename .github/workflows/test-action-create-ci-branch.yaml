@@ -1,0 +1,84 @@
+name: "Test Action: create-ci-branch"
+
+on:
+  push:
+    paths: &paths
+      - .github/workflows/test-action-create-ci-branch.yaml
+      - create-ci-branch/**
+      - checkout-as-app/** # dependency
+  pull_request:
+    paths: *paths
+
+env:
+  TEST_REPO: eth-p/gh-actions-test-repo
+
+jobs:
+  test-with-defaults:
+    name: "Create CI Branch Works"
+    runs-on: ubuntu-latest
+    steps:
+      - id: action
+        uses: $/create-ci-branch
+        with:
+          ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+          ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          repository: ${{ env.TEST_REPO }}
+
+      - name: "Output: branch"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.branch }}" }
+        run: |-
+          set -euo pipefail
+          test -n "$OUTPUT"
+
+      - name: "Output: banner"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.banner }}" }
+        run: |-
+          set -euo pipefail
+          test -n "$OUTPUT"
+
+      - name: "Output: git-name"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.git-name }}" }
+        run: |-
+          set -euo pipefail
+          test -n "$OUTPUT"
+
+      - name: "Output: git-email"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.git-email }}" }
+        run: |-
+          set -euo pipefail
+          test -n "$OUTPUT"
+
+      - name: "Output: token"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.token }}" }
+        run: |-
+          set -euo pipefail
+          test -n "$OUTPUT"
+
+      - name: "Assert: Repo is shallow"
+        shell: bash
+        run: |-
+          set -euo pipefail
+          if [[ $(git rev-parse --is-shallow-repository) != "true" ]]; then
+            printf "\x1B[31mNot cloned as a shallow repo.\x1B[m\n"
+            exit 1
+          fi
+
+      - name: "Assert: Branch exists on remote"
+        shell: bash
+        env: { BRANCH: "${{ steps.action.outputs.branch }}" }
+        run: |-
+          set -euo pipefail
+          test -n "$(git ls-remote origin "refs/heads/${BRANCH}")"
+
+      - name: "Cleanup"
+        if: '${{ always() }}'
+        env: { BRANCH: "${{ steps.action.outputs.branch }}" }
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git push origin --delete "$BRANCH"
