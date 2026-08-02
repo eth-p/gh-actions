@@ -14,6 +14,17 @@ env:
   TEST_REPO: eth-p/gh-actions-test-repo
 
 jobs:
+  meta:
+    name: "Passed - rebase-branch"
+    runs-on: ubuntu-latest
+    steps: [{ run: "true" }]
+    needs:
+      - test-when-diverged-safely
+      - test-when-behind
+      - test-when-ahead
+      - test-when-same-commit
+      - test-creates-branch
+
   test-when-diverged-safely:
     name: "When Diverged From Base"
     runs-on: ubuntu-latest

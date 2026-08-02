@@ -13,6 +13,13 @@ env:
   TEST_REPO: eth-p/gh-actions-test-repo
 
 jobs:
+  meta:
+    name: "Passed - nix-flake-develop"
+    runs-on: ubuntu-latest
+    steps: [{ run: "true" }]
+    needs:
+      - test-with-defaults
+
   test-with-defaults:
     name: "Test Develop Profile"
     runs-on: ubuntu-latest
