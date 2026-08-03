@@ -1,0 +1,92 @@
+# This is a workflow used to validate the behavior of an action in this repo.
+name: "Test Action: revoke-github-app-token"
+
+on:
+  push:
+    paths: &paths
+      #
+      # ----- BEGIN DETECTED DEPENDENCIES -----
+      - .github/workflows/test-action-revoke-github-app-token.yaml
+      - revoke-github-app-token/action.yaml
+      # ----- END DETECTED DEPENDENCIES -----
+  pull_request:
+    paths: *paths
+
+env:
+  TEST_REPO: eth-p/gh-actions-test-repo
+
+jobs:
+  test-revokes-token:
+    name: "Revokes Token"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Get GitHub Token"
+        uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+          private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          repositories: ${{ env.TEST_REPO }}
+          skip-token-revoke: true
+
+      - name: "Assert: Token is Valid"
+        shell: bash
+        env: { GH_TOKEN: "${{ steps.app-token.outputs.token }}" }
+        run: |-
+          set -euo pipefail
+          echo "Authenticated as:"
+          gh auth status --json hosts --jq '.hosts[].[].login'
+
+      - id: action
+        uses: $/revoke-github-app-token
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: "Assert: Token Revoked"
+        shell: bash
+        env: { GH_TOKEN: "${{ steps.app-token.outputs.token }}" }
+        run: |-
+          set -euo pipefail
+          if gh auth status &>/dev/null; then
+            printf "\x1B[31mToken is still usable.\x1B[m"
+            exit 1
+          fi
+
+      - &ensure-revoke
+        name: "Ensure token is revoked"
+        env: { GH_TOKEN: "${{ steps.app-token.outputs.token }}" }
+        if: ${{ always() }}
+        run: gh api --method DELETE /installation/token || true
+
+  test-continues-on-invalid-token:
+    name: "Skips Invalid Token"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Get GitHub Token"
+        uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+          private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          repositories: ${{ env.TEST_REPO }}
+          skip-token-revoke: true
+
+      - name: "Assert: Token is Valid"
+        shell: bash
+        env: { GH_TOKEN: "${{ steps.app-token.outputs.token }}" }
+        run: |-
+          set -euo pipefail
+          echo "Authenticated as:"
+          gh auth status --json hosts --jq '.hosts[].[].login'
+
+      - id: revoke-token
+        uses: $/revoke-github-app-token
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - id: action
+        uses: $/revoke-github-app-token
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - *ensure-revoke
