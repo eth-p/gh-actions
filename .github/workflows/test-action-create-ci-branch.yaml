@@ -7,6 +7,7 @@ on:
       - .github/workflows/test-action-create-ci-branch-cleanup.yaml
       - create-ci-branch/**
       - checkout-as-app/** # dependency
+      - cleanup-hook/** # dependency
   pull_request:
     paths: *paths
 
@@ -20,6 +21,7 @@ jobs:
     steps: [{ run: "true" }]
     needs:
       - test-with-defaults
+      - test-cleanup
 
   test-with-defaults:
     name: "Create CI Branch Works"
@@ -90,3 +92,37 @@ jobs:
         run: |-
           set -euo pipefail
           git push origin --delete "$BRANCH"
+
+  test-cleanup-setup:
+    name: "Cleanup Hook (Setup)"
+    runs-on: ubuntu-latest
+    outputs:
+      branch: ${{ steps.test-branch.outputs.branch }}
+    steps:
+      - id: test-branch
+        uses: $/create-ci-branch
+        with:
+          ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+          ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          repository: ${{ env.TEST_REPO }}
+          cleanup-after-job: true
+
+  test-cleanup:
+    name: "Cleanup Hook"
+    needs: [test-cleanup-setup]
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout Repo"
+        id: checkout
+        uses: $/checkout-as-app
+        with:
+          ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+          ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          repository: ${{ env.TEST_REPO }}
+
+      - name: "Assert: Branch no longer exists on remote"
+        shell: bash
+        env: { BRANCH: "${{ needs.test-cleanup-setup.outputs.branch }}" }
+        run: |-
+          set -euo pipefail
+          test -z "$(git ls-remote origin "refs/heads/${BRANCH}")"

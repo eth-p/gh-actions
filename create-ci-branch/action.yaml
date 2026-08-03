@@ -28,6 +28,11 @@ inputs:
     default: "."
     required: false
 
+  cleanup-after-job:
+    description: "If not set to false, the branch will be deleted after the running job ends."
+    default: "false"
+    required: false
+
 outputs:
   branch:
     description: "The generated branch name."
@@ -103,3 +108,18 @@ runs:
         git add -u
         git commit -m "ci: ${RUN_URL}"
         git push origin "$BRANCH"
+
+    - name: "Add cleanup hook"
+      if: ${{ inputs.cleanup-after-job != 'false' }}
+      env:
+        GH_TOKEN: ${{ steps.checkout.outputs.token }}
+        GITHUB_TOKEN: ${{ steps.checkout.outputs.token }}
+        REPOSITORY: ${{ inputs.repository }}
+        BRANCH_PREFIX: ${{ steps.vars.outputs.branch }}
+      uses: $/cleanup-hook
+      with:
+        run: |-
+          set -euo pipefail
+          bash "${GITHUB_ACTION_PATH}/cleanup/cleanup.sh"
+
+

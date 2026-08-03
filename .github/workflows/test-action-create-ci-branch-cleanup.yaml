@@ -32,6 +32,7 @@ jobs:
           ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
           repository: ${{ env.TEST_REPO }}
+          cleanup-after-job: false
 
       - id: action
         uses: $/create-ci-branch/cleanup
@@ -73,6 +74,7 @@ jobs:
           ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
           repository: ${{ env.TEST_REPO }}
+          cleanup-after-job: false
 
       - name: Create an extra branch
         shell: bash
