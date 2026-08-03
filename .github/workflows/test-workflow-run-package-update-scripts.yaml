@@ -13,6 +13,7 @@ on:
 
 env:
   TEST_REPO: &test-repo "eth-p/gh-actions-test-repo"
+  TEST_BRANCH: "" # set within jobs when running $/create-ci-branch
 
 jobs:
   meta:
@@ -38,13 +39,12 @@ jobs:
           cleanup-after-job: false
 
       - name: "Setup"
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
         shell: bash
         run: |-
           set -euo pipefail
 
           # Create the scripts branch.
-          git checkout -b "${BRANCH}-scripts"
+          git checkout -b "${TEST_BRANCH}-scripts"
           for script in foo bar; do
             printf "touch %q\ngit add %q\ngit commit -m %q" \
               "$script" "$script" "update($script): pretend update" \
@@ -54,7 +54,7 @@ jobs:
           done
 
           git commit -m 'ci: Add scripts for run-package-update-scripts'
-          git push origin "${BRANCH}-scripts"
+          git push origin "${TEST_BRANCH}-scripts"
 
   test-when-has-updates-run:
     name: "When Has Updates (Run)"

@@ -13,6 +13,7 @@ on:
 
 env:
   TEST_REPO: eth-p/gh-actions-test-repo
+  TEST_BRANCH: "" # set within jobs when running $/create-ci-branch
 
 jobs:
   meta:
@@ -37,12 +38,11 @@ jobs:
           cleanup-after-job: true
 
       - name: "Setup"
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
         shell: bash
         run: |-
           set -euo pipefail
-          git checkout -b "${BRANCH}-pr"
-          git push origin "${BRANCH}-pr"
+          git checkout -b "${TEST_BRANCH}-pr"
+          git push origin "${TEST_BRANCH}-pr"
 
       - id: action
         uses: $/update-pr
@@ -82,17 +82,16 @@ jobs:
           cleanup-after-job: true
 
       - name: "Setup"
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
         shell: bash
         run: |-
           set -euo pipefail
-          git checkout -b "${BRANCH}-pr"
+          git checkout -b "${TEST_BRANCH}-pr"
 
           # Create a commit.
           touch new-file
           git add new-file
           git commit -m 'ci: Add new file'
-          git push origin "${BRANCH}-pr"
+          git push origin "${TEST_BRANCH}-pr"
 
       - name: "Create PR"
         id: create
@@ -200,17 +199,16 @@ jobs:
           cleanup-after-job: true
 
       - name: "Setup"
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
         shell: bash
         run: |-
           set -euo pipefail
-          git checkout -b "${BRANCH}-pr"
+          git checkout -b "${TEST_BRANCH}-pr"
 
           # Create a commit.
           touch new-file
           git add new-file
           git commit -m 'ci: Add new file'
-          git push origin "${BRANCH}-pr"
+          git push origin "${TEST_BRANCH}-pr"
 
       - id: action
         uses: $/update-pr

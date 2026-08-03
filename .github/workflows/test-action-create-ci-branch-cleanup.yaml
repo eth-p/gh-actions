@@ -43,10 +43,9 @@ jobs:
 
       - name: "Assert: Branch no longer exists on remote"
         shell: bash
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
         run: |-
           set -euo pipefail
-          test -z "$(git ls-remote origin "refs/heads/${BRANCH}")"
+          test -z "$(git ls-remote origin "refs/heads/${TEST_BRANCH}")"
 
       - name: "Output: count"
         shell: bash
@@ -78,11 +77,9 @@ jobs:
 
       - name: Create an extra branch
         shell: bash
-        env:
-          BRANCH: ${{ steps.test-branch.outputs.branch }}
         run: |-
-          git checkout -b "${BRANCH}-extra"
-          git push origin "${BRANCH}-extra"
+          git checkout -b "${TEST_BRANCH}-extra"
+          git push origin "${TEST_BRANCH}-extra"
 
       - id: action
         uses: $/create-ci-branch/cleanup
@@ -93,17 +90,15 @@ jobs:
 
       - name: "Assert: Branch no longer exists on remote"
         shell: bash
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
         run: |-
           set -euo pipefail
-          test -z "$(git ls-remote origin "refs/heads/${BRANCH}")"
+          test -z "$(git ls-remote origin "refs/heads/${TEST_BRANCH}")"
 
       - name: "Assert: Extra branch no longer exists on remote"
         shell: bash
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
         run: |-
           set -euo pipefail
-          test -z "$(git ls-remote origin "refs/heads/${BRANCH}-extra")"
+          test -z "$(git ls-remote origin "refs/heads/${TEST_BRANCH}-extra")"
 
       - name: "Output: count"
         shell: bash

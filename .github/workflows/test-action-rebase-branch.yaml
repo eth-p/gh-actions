@@ -13,6 +13,7 @@ on:
 
 env:
   TEST_REPO: eth-p/gh-actions-test-repo
+  TEST_BRANCH: "" # set within jobs when running $/create-ci-branch
 
 jobs:
   meta:
@@ -39,34 +40,34 @@ jobs:
           cleanup-after-job: true
 
       - name: "Setup"
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
         shell: bash
         run: |-
           set -euo pipefail
-          git checkout -b "${BRANCH}-target"
+          git checkout -b "${TEST_BRANCH}-target"
 
           # Move base branch ahead of target branch
-          git checkout "${BRANCH}"
+          git checkout "${TEST_BRANCH}"
           echo "Test" >file-in-base.txt
           git add file-in-base.txt
           git commit -m "Add file in base"
-          git push origin "${BRANCH}"
+          git push origin "${TEST_BRANCH}"
 
           # Move target branch ahead of common ancestor
-          git checkout "${BRANCH}-target"
+          git checkout "${TEST_BRANCH}-target"
           echo "Test" >file-in-target.txt
           git add file-in-target.txt
           git commit -m "Add file in target"
-          git push origin "${BRANCH}-target"
+          git push origin "${TEST_BRANCH}-target"
 
       - name: "Remove local branches"
         shell: bash
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
         run: |-
           set -euo pipefail
           git fetch --depth=1 origin master
           git checkout master
-          git branch -D "${BRANCH}" "${BRANCH}-target"
+          git branch -D \
+            "${TEST_BRANCH}" \
+            "${TEST_BRANCH}-target"
 
       - id: action
         uses: $/rebase-branch
@@ -76,13 +77,11 @@ jobs:
           create-branch: false
 
       - name: "Assert: Target branch caught up to base"
-        env:
-          BRANCH: ${{ steps.test-branch.outputs.branch }}
         shell: bash
         run: |-
           set -euo pipefail
-          git fetch origin "${BRANCH}" "${BRANCH}-target"
-          git checkout "refs/remotes/origin/${BRANCH}-target"
+          git fetch origin "${TEST_BRANCH}" "${TEST_BRANCH}-target"
+          git checkout "refs/remotes/origin/${TEST_BRANCH}-target"
 
           if ! [[ -e file-in-base.txt ]]; then
             printf "\x1B[31mChanges from base branch were lost.\x1B[m"
@@ -95,8 +94,8 @@ jobs:
           fi
 
           if ! git merge-base --is-ancestor \
-            "refs/remotes/origin/${BRANCH}" \
-            "refs/remotes/origin/${BRANCH}-target";
+            "refs/remotes/origin/${TEST_BRANCH}" \
+            "refs/remotes/origin/${TEST_BRANCH}-target";
           then
             printf "\x1B[31mBase branch is not ancestor of rebased target branch.\x1B[m"
             exit 1
@@ -116,30 +115,30 @@ jobs:
 
       - name: "Setup"
         id: setup
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
         shell: bash
         run: |-
           set -euo pipefail
-          git checkout -b "${BRANCH}-target"
-          git push origin "${BRANCH}-target"
+          git checkout -b "${TEST_BRANCH}-target"
+          git push origin "${TEST_BRANCH}-target"
 
           # Move base branch ahead of target branch
-          git checkout "${BRANCH}"
+          git checkout "${TEST_BRANCH}"
           echo "Test" >file.txt
           git add file.txt
           git commit -m "Add file"
-          git push origin "${BRANCH}"
+          git push origin "${TEST_BRANCH}"
 
           printf "commit=%s\n" "$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
 
       - name: "Remove local branches"
         shell: bash
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
         run: |-
           set -euo pipefail
           git fetch --depth=1 origin master
           git checkout master
-          git branch -D "${BRANCH}" "${BRANCH}-target"
+          git branch -D \
+            "${TEST_BRANCH}" \
+            "${TEST_BRANCH}-target"
 
       - id: action
         uses: $/rebase-branch
@@ -150,14 +149,13 @@ jobs:
 
       - name: "Assert: Target branch caught up to base"
         env:
-          BRANCH: ${{ steps.test-branch.outputs.branch }}
           COMMIT: ${{ steps.setup.outputs.commit }}
         shell: bash
         run: |-
           set -euo pipefail
-          git fetch origin "${BRANCH}" "${BRANCH}-target"
-          branch_commit=$(git rev-parse "refs/remotes/origin/${BRANCH}-target")
-          base_commit=$(git rev-parse "refs/remotes/origin/${BRANCH}")
+          git fetch origin "${TEST_BRANCH}" "${TEST_BRANCH}-target"
+          branch_commit=$(git rev-parse "refs/remotes/origin/${TEST_BRANCH}-target")
+          base_commit=$(git rev-parse "refs/remotes/origin/${TEST_BRANCH}")
 
           printf "%s: %s\n" \
             "Expected" "$COMMIT" \
@@ -183,29 +181,27 @@ jobs:
 
       - name: "Setup"
         id: setup
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
         shell: bash
         run: |-
           set -euo pipefail
-          git checkout -b "${BRANCH}-target"
-          git push origin "${BRANCH}-target"
+          git checkout -b "${TEST_BRANCH}-target"
+          git push origin "${TEST_BRANCH}-target"
 
           # Move target branch ahead of base branch
           echo "Test" >file.txt
           git add file.txt
           git commit -m "Add file"
-          git push origin "${BRANCH}-target"
+          git push origin "${TEST_BRANCH}-target"
 
           printf "commit=%s\n" "$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
 
       - name: "Remove local branches"
         shell: bash
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
         run: |-
           set -euo pipefail
           git fetch --depth=1 origin master
           git checkout master
-          git branch -D "${BRANCH}" "${BRANCH}-target"
+          git branch -D "${TEST_BRANCH}" "${TEST_BRANCH}-target"
 
       - id: action
         uses: $/rebase-branch
@@ -216,14 +212,13 @@ jobs:
 
       - name: "Assert: Target branch still ahead of base"
         env:
-          BRANCH: ${{ steps.test-branch.outputs.branch }}
           COMMIT: ${{ steps.setup.outputs.commit }}
         shell: bash
         run: |-
           set -euo pipefail
-          git fetch origin "${BRANCH}" "${BRANCH}-target"
-          branch_commit=$(git rev-parse "refs/remotes/origin/${BRANCH}-target")
-          base_commit=$(git rev-parse "refs/remotes/origin/${BRANCH}")
+          git fetch origin "${TEST_BRANCH}" "${TEST_BRANCH}-target"
+          branch_commit=$(git rev-parse "refs/remotes/origin/${TEST_BRANCH}-target")
+          base_commit=$(git rev-parse "refs/remotes/origin/${TEST_BRANCH}")
 
           printf "%s: %s\n" \
             "Expected" "$COMMIT" \
@@ -249,22 +244,20 @@ jobs:
 
       - name: "Setup"
         id: setup
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
         shell: bash
         run: |-
           set -euo pipefail
           printf "commit=%s\n" "$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
-          git checkout -b "${BRANCH}-target"
-          git push origin "${BRANCH}-target"
+          git checkout -b "${TEST_BRANCH}-target"
+          git push origin "${TEST_BRANCH}-target"
 
       - name: "Remove local branches"
         shell: bash
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
         run: |-
           set -euo pipefail
           git fetch --depth=1 origin master
           git checkout master
-          git branch -D "${BRANCH}" "${BRANCH}-target"
+          git branch -D "${TEST_BRANCH}" "${TEST_BRANCH}-target"
 
       - id: action
         uses: $/rebase-branch
@@ -274,14 +267,13 @@ jobs:
 
       - name: "Assert: Commits unchanged"
         env:
-          BRANCH: ${{ steps.test-branch.outputs.branch }}
           COMMIT: ${{ steps.setup.outputs.commit }}
         shell: bash
         run: |-
           set -euo pipefail
-          git fetch origin "${BRANCH}" "${BRANCH}-target"
-          branch_commit=$(git rev-parse "refs/remotes/origin/${BRANCH}-target")
-          base_commit=$(git rev-parse "refs/remotes/origin/${BRANCH}")
+          git fetch origin "${TEST_BRANCH}" "${TEST_BRANCH}-target"
+          branch_commit=$(git rev-parse "refs/remotes/origin/${TEST_BRANCH}-target")
+          base_commit=$(git rev-parse "refs/remotes/origin/${TEST_BRANCH}")
 
           printf "%s: %s\n" \
             "Expected" "$COMMIT" \
@@ -312,12 +304,11 @@ jobs:
 
       - name: "Remove local branches"
         shell: bash
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
         run: |-
           set -euo pipefail
           git fetch --depth=1 origin master
           git checkout master
-          git branch -D "${BRANCH}"
+          git branch -D "${TEST_BRANCH}"
 
       - id: action
         uses: $/rebase-branch
@@ -331,5 +322,5 @@ jobs:
         shell: bash
         run: |-
           set -euo pipefail
-          git fetch origin "${BRANCH}" "${BRANCH}-target"
-          git rev-parse "refs/remotes/origin/${BRANCH}-target"
+          git fetch origin "${TEST_BRANCH}" "${TEST_BRANCH}-target"
+          git rev-parse "refs/remotes/origin/${TEST_BRANCH}-target"
