@@ -33,6 +33,7 @@ jobs:
           ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
           repository: ${{ env.TEST_REPO }}
+          cleanup-after-job: true
 
       - name: "Output: branch"
         shell: bash
@@ -84,14 +85,6 @@ jobs:
         run: |-
           set -euo pipefail
           test -n "$(git ls-remote origin "refs/heads/${BRANCH}")"
-
-      - name: "Cleanup"
-        if: "${{ always() }}"
-        env: { BRANCH: "${{ steps.action.outputs.branch }}" }
-        shell: bash
-        run: |-
-          set -euo pipefail
-          git push origin --delete "$BRANCH"
 
   test-cleanup-setup:
     name: "Cleanup Hook (Setup)"

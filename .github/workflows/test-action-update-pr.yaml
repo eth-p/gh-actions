@@ -7,6 +7,7 @@ on:
       - update-pr/**
       - create-ci-branch/** # test dependency
       - checkout-as-app/** # test dependency
+      - cleanup-hook/** # test dependency
   pull_request:
     paths: *paths
 
@@ -33,6 +34,7 @@ jobs:
           ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
           repository: ${{ env.TEST_REPO }}
+          cleanup-after-job: true
 
       - name: "Setup"
         env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
@@ -67,15 +69,6 @@ jobs:
           set -euo pipefail
           test -z "$OUTPUT"
 
-      - name: "Cleanup"
-        if: "${{ always() }}"
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
-        shell: bash
-        run: |-
-          set -euo pipefail
-          git push origin --delete "${BRANCH}"
-          git push origin --delete "${BRANCH}-pr"
-
   test-updates-pr:
     name: "Updates Existing PR"
     runs-on: ubuntu-latest
@@ -86,6 +79,7 @@ jobs:
           ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
           repository: ${{ env.TEST_REPO }}
+          cleanup-after-job: true
 
       - name: "Setup"
         env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
@@ -193,15 +187,6 @@ jobs:
           test -n "$OUTPUT"
           test "$(wc -c <"$OUTPUT")" -ne 0
 
-      - name: "Cleanup"
-        if: "${{ always() }}"
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
-        shell: bash
-        run: |-
-          set -euo pipefail
-          git push origin --delete "${BRANCH}"
-          git push origin --delete "${BRANCH}-pr"
-
   test-creates-pr:
     name: "Creates New PR"
     runs-on: ubuntu-latest
@@ -212,6 +197,7 @@ jobs:
           ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
           repository: ${{ env.TEST_REPO }}
+          cleanup-after-job: true
 
       - name: "Setup"
         env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
@@ -252,12 +238,3 @@ jobs:
         run: |-
           set -euo pipefail
           test -n "$OUTPUT"
-
-      - name: "Cleanup"
-        if: "${{ always() }}"
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
-        shell: bash
-        run: |-
-          set -euo pipefail
-          git push origin --delete "${BRANCH}"
-          git push origin --delete "${BRANCH}-pr"

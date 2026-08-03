@@ -7,6 +7,7 @@ on:
       - rebase-branch/**
       - create-ci-branch/** # dependency
       - checkout-as-app/** # dependency
+      - cleanup-hook/** # dependency
   pull_request:
     paths: *paths
 
@@ -35,6 +36,7 @@ jobs:
           ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
           repository: ${{ env.TEST_REPO }}
+          cleanup-after-job: true
 
       - name: "Setup"
         env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
@@ -100,15 +102,6 @@ jobs:
             exit 1
           fi
 
-      - name: "Cleanup"
-        if: "${{ always() }}"
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
-        shell: bash
-        run: |-
-          set -euo pipefail
-          git push origin --delete "${BRANCH}" || true
-          git push origin --delete "${BRANCH}-target" || true
-
   test-when-behind:
     name: "When Behind Base"
     runs-on: ubuntu-latest
@@ -119,6 +112,7 @@ jobs:
           ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
           repository: ${{ env.TEST_REPO }}
+          cleanup-after-job: true
 
       - name: "Setup"
         id: setup
@@ -175,15 +169,6 @@ jobs:
             exit 1
           fi
 
-      - name: "Cleanup"
-        if: "${{ always() }}"
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
-        shell: bash
-        run: |-
-          set -euo pipefail
-          git push origin --delete "${BRANCH}" || true
-          git push origin --delete "${BRANCH}-target" || true
-
   test-when-ahead:
     name: "When Ahead of Base"
     runs-on: ubuntu-latest
@@ -194,6 +179,7 @@ jobs:
           ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
           repository: ${{ env.TEST_REPO }}
+          cleanup-after-job: true
 
       - name: "Setup"
         id: setup
@@ -249,15 +235,6 @@ jobs:
             exit 1
           fi
 
-      - name: "Cleanup"
-        if: "${{ always() }}"
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
-        shell: bash
-        run: |-
-          set -euo pipefail
-          git push origin --delete "${BRANCH}" || true
-          git push origin --delete "${BRANCH}-target" || true
-
   test-when-same-commit:
     name: "When Up-to-date"
     runs-on: ubuntu-latest
@@ -268,6 +245,7 @@ jobs:
           ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
           repository: ${{ env.TEST_REPO }}
+          cleanup-after-job: true
 
       - name: "Setup"
         id: setup
@@ -320,15 +298,6 @@ jobs:
             exit 1
           fi
 
-      - name: "Cleanup"
-        if: "${{ always() }}"
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
-        shell: bash
-        run: |-
-          set -euo pipefail
-          git push origin --delete "${BRANCH}" || true
-          git push origin --delete "${BRANCH}-target" || true
-
   test-creates-branch:
     name: "When Branch Not Exists"
     runs-on: ubuntu-latest
@@ -339,6 +308,7 @@ jobs:
           ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
           repository: ${{ env.TEST_REPO }}
+          cleanup-after-job: true
 
       - name: "Remove local branches"
         shell: bash
@@ -363,12 +333,3 @@ jobs:
           set -euo pipefail
           git fetch origin "${BRANCH}" "${BRANCH}-target"
           git rev-parse "refs/remotes/origin/${BRANCH}-target"
-
-      - name: "Cleanup"
-        if: "${{ always() }}"
-        env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
-        shell: bash
-        run: |-
-          set -euo pipefail
-          git push origin --delete "${BRANCH}" || true
-          git push origin --delete "${BRANCH}-target" || true
