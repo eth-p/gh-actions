@@ -30,7 +30,7 @@ inputs:
 
   cleanup-after-job:
     description: "If not set to false, the branch will be deleted after the running job ends."
-    default: "false"
+    default: "true"
     required: false
 
   set-env-var:
