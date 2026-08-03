@@ -35,6 +35,7 @@ jobs:
           ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
           repository: ${{ env.TEST_REPO }}
+          cleanup-after-job: false
 
       - name: "Setup"
         env: { BRANCH: "${{ steps.test-branch.outputs.branch }}" }
@@ -127,19 +128,9 @@ jobs:
       - test-when-has-updates-run
       - test-when-has-updates
     steps:
-      - uses: $/checkout-as-app
+      - uses: $/create-ci-branch/cleanup
         with:
           ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
           repository: ${{ env.TEST_REPO }}
-          ref: ${{ needs.test-when-has-updates-setup.outputs.branch }}
-
-      - name: "Cleanup"
-        if: "${{ always() }}"
-        env: { BRANCH: "${{ needs.test-when-has-updates-setup.outputs.branch }}" }
-        shell: bash
-        run: |-
-          set -euo pipefail
-          git push origin --delete "${BRANCH}" || true
-          git push origin --delete "${BRANCH}-scripts" || true
-          git push origin --delete "${BRANCH}-pr" || true
+          branch: ${{ needs.test-when-has-updates-setup.outputs.branch }}
