@@ -1,0 +1,88 @@
+name: "Setup Git"
+description: "Sets up git for creating commits."
+inputs:
+  path:
+    description: "Relative path under $GITHUB_WORKSPACE of the repository."
+    required: false
+    default: "."
+
+  github-token:
+    description: "The GitHub token used to determine the git user."
+    required: false
+
+  scope:
+    description: "The scope to apply the configurations to. Valid options are: local, global"
+    default: global
+    required: false
+
+  user-name:
+    description: "The git user.name. If not specified, will be determined via the GITHUB_TOKEN."
+    default: ""
+    required: false
+
+  user-email:
+    description: "The git user.email. If not specified, will be determined via the GITHUB_TOKEN."
+    default: ""
+    required: false
+
+outputs:
+  git-user-name:
+    description: "The git user.name."
+    value: ${{ steps.user-info.outputs.name }}
+
+  git-user-email:
+    description: "The git user.email."
+    value: ${{ steps.user-info.outputs.email }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Detect user info"
+      id: user-info
+      shell: bash
+      env:
+        USER_NAME: ${{ inputs.user-name }}
+        USER_EMAIL: ${{ inputs.user-email }}
+        INPUT_GH_TOKEN: ${{ inputs.github-token }}
+        ACTIONS_GH_TOKEN: ${{ github.token }}
+      run: |-
+        set -euo pipefail
+        export GH_TOKEN="${INPUT_GH_TOKEN:-$ACTIONS_GH_TOKEN}"
+
+        if [[ -n "${USER_NAME}" ]] && [[ -n "$USER_EMAIL" ]]; then
+          echo "name=${USER_NAME}" >>"$GITHUB_OUTPUT"
+          echo "email=${USER_EMAIL}" >>"$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # Detect user info via GitHub's API.
+        username=$(gh auth status --json hosts --jq '.hosts[].[].login')
+        user_id=$(gh api "/users/${username}" --jq '.id')
+        user_email="${user_id}+${username}@users.noreply.github.com"
+
+        echo "name=${USER_NAME:-$username}" >>"$GITHUB_OUTPUT"
+        echo "email=${USER_EMAIL:-$user_email}" >>"$GITHUB_OUTPUT"
+
+    - name: "Configure git (global)"
+      shell: bash
+      if: ${{ inputs.scope == 'global' }}
+      env:
+        USER_NAME: ${{ steps.user-info.outputs.name }}
+        USER_EMAIL: ${{ steps.user-info.outputs.email }}
+      run: |-
+        set -euo pipefail
+        git config --global user.name "${USER_NAME}"
+        git config --global user.email "${USER_EMAIL}"
+
+    - name: "Configure git (local)"
+      shell: bash
+      if: ${{ inputs.scope == 'local' }}
+      env:
+        USER_NAME: ${{ steps.user-info.outputs.name }}
+        USER_EMAIL: ${{ steps.user-info.outputs.email }}
+        REPO_PATH: ${{ inputs.path }}
+      run: |-
+        set -euo pipefail
+        cd "$REPO_PATH"
+        git config --local user.name "${USER_NAME}"
+        git config --local user.email "${USER_EMAIL}"

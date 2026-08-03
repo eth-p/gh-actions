@@ -1,0 +1,140 @@
+# This is a workflow used to validate the behavior of an action in this repo.
+name: "Test Action: setup-git"
+
+on:
+  push:
+    paths: &paths
+      #
+      # ----- BEGIN DETECTED DEPENDENCIES -----
+      - .github/workflows/test-action-setup-git.yaml
+      - setup-git/action.yaml
+      # ----- END DETECTED DEPENDENCIES -----
+  pull_request:
+    paths: *paths
+
+env:
+  TEST_REPO: eth-p/gh-actions-test-repo
+
+jobs:
+  test-detect-actions-info:
+    name: "Detects from GITHUB_TOKEN"
+    runs-on: ubuntu-latest
+    steps:
+      - id: action
+        uses: $/setup-git
+
+      - name: "Assert: Git is configured"
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git_name=$(git config user.name) || true
+          git_email=$(git config user.email) || true
+
+          echo "name: $git_name"
+          echo "email: $git_email"
+          test -n "$git_name"
+          test -n "$git_email"
+
+      - name: "Output: git-user-name"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.git-user-name }}" }
+        run: |-
+          set -euo pipefail
+          test -n "$OUTPUT"
+
+      - name: "Output: git-user-email"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.git-user-name }}" }
+        run: |-
+          set -euo pipefail
+          test -n "$OUTPUT"
+
+  test-detect-app-info:
+    name: "Detects from GitHub App"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Get GitHub Token"
+        uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+          private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          repositories: ${{ env.TEST_REPO }}
+          skip-token-revoke: true
+
+      - id: action
+        uses: $/setup-git
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+
+      - name: "Assert: Git is configured"
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git_name=$(git config user.name) || true
+          git_email=$(git config user.email) || true
+
+          echo "name: $git_name"
+          echo "email: $git_email"
+          test -n "$git_name"
+          test -n "$git_email"
+
+      - name: "Output: git-user-name"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.git-user-name }}" }
+        run: |-
+          set -euo pipefail
+          test -n "$OUTPUT"
+
+      - name: "Output: git-user-email"
+        shell: bash
+        env: { OUTPUT: "${{ steps.action.outputs.git-user-name }}" }
+        run: |-
+          set -euo pipefail
+          test -n "$OUTPUT"
+
+  test-scope-local:
+    name: "Scoped to local repo"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: action
+        uses: $/setup-git
+        with:
+          scope: local
+
+      - name: "Assert: Git is configured"
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git_name=$(git config --local user.name) || true
+          git_email=$(git config --local user.email) || true
+
+          echo "name: $git_name"
+          echo "email: $git_email"
+          test -n "$git_name"
+          test -n "$git_email"
+
+  test-scope-global:
+    name: "Scoped to global git config"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: action
+        uses: $/setup-git
+        with:
+          scope: global
+
+      - name: "Assert: Git is configured"
+        shell: bash
+        run: |-
+          set -euo pipefail
+          git_name=$(git config --global user.name) || true
+          git_email=$(git config --global user.email) || true
+
+          echo "name: $git_name"
+          echo "email: $git_email"
+          test -n "$git_name"
+          test -n "$git_email"
