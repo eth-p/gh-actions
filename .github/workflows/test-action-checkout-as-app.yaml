@@ -1,10 +1,14 @@
+# This is a workflow used to validate the behavior of an action in this repo.
 name: "Test Action: checkout-as-app"
 
 on:
   push:
     paths: &paths
+      #
+      # ----- BEGIN DETECTED DEPENDENCIES -----
+      - checkout-as-app/action.yaml
       - .github/workflows/test-action-checkout-as-app.yaml
-      - checkout-as-app/**
+      # ----- END DETECTED DEPENDENCIES -----
   pull_request:
     paths: *paths
 
@@ -12,13 +16,6 @@ env:
   TEST_REPO: eth-p/gh-actions-test-repo
 
 jobs:
-  meta:
-    name: "Passed - checkout-as-app"
-    runs-on: ubuntu-latest
-    steps: [{ run: "true" }]
-    needs:
-      - test-with-defaults
-
   test-with-defaults:
     name: "Checkout Works"
     runs-on: ubuntu-latest

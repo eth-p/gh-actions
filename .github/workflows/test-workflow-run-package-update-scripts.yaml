@@ -1,13 +1,32 @@
+# This is a workflow used to validate the behavior of an action in this repo.
 name: "Test Workflow: run-package-update-scripts"
 
 on:
   push:
     paths: &paths
-      - .github/workflows/test-workflow-run-package-update-scripts.yaml
+      #
+      # ----- BEGIN DETECTED DEPENDENCIES -----
+      - checkout-as-app/action.yaml
+      - cleanup-hook/action-main.js
+      - cleanup-hook/action-post.js
+      - cleanup-hook/action.yaml
+      - cleanup-hook/inputs.js
+      - create-ci-branch/action.yaml
+      - create-ci-branch/cleanup/action.yaml
+      - create-ci-branch/cleanup/cleanup.sh
       - .github/workflows/run-package-update-scripts.yaml
-      - rebase-branch/** # dependency
-      - checkout-as-app/** # dependency
-      - create-ci-branch/** # test dependency
+      - .github/workflows/test-action-checkout-as-app.yaml
+      - .github/workflows/test-action-cleanup-hook.yaml
+      - .github/workflows/test-action-create-ci-branch-cleanup.yaml
+      - .github/workflows/test-action-create-ci-branch.yaml
+      - .github/workflows/test-action-nix-flake-develop.yaml
+      - .github/workflows/test-action-rebase-branch.yaml
+      - .github/workflows/test-action-update-pr.yaml
+      - .github/workflows/test-workflow-run-package-update-scripts.yaml
+      - nix-flake-develop/action.yaml
+      - rebase-branch/action.yaml
+      - update-pr/action.yaml
+      # ----- END DETECTED DEPENDENCIES -----
   pull_request:
     paths: *paths
 
@@ -16,13 +35,6 @@ env:
   TEST_BRANCH: "" # set within jobs when running $/create-ci-branch
 
 jobs:
-  meta:
-    name: "Passed - run-package-update-scripts"
-    runs-on: ubuntu-latest
-    steps: [{ run: "true" }]
-    needs:
-      - test-when-has-updates
-
   test-when-has-updates-setup:
     name: "When Has Updates (Setup)"
     runs-on: ubuntu-latest

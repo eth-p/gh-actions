@@ -1,11 +1,14 @@
+# This is a workflow used to validate the behavior of an action in this repo.
 name: "Test Action: nix-flake-develop"
 
 on:
   push:
     paths: &paths
-      - .github/workflows/test-action-create-ci-branch.yaml
-      - nix-flake-develop/**
-      - test-data/nix-flake/**
+      #
+      # ----- BEGIN DETECTED DEPENDENCIES -----
+      - .github/workflows/test-action-nix-flake-develop.yaml
+      - nix-flake-develop/action.yaml
+      # ----- END DETECTED DEPENDENCIES -----
   pull_request:
     paths: *paths
 
@@ -13,13 +16,6 @@ env:
   TEST_REPO: eth-p/gh-actions-test-repo
 
 jobs:
-  meta:
-    name: "Passed - nix-flake-develop"
-    runs-on: ubuntu-latest
-    steps: [{ run: "true" }]
-    needs:
-      - test-with-defaults
-
   test-with-defaults:
     name: "Test Develop Profile"
     runs-on: ubuntu-latest

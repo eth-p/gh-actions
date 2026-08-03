@@ -1,12 +1,24 @@
-name: "Test Action: create-ci-branch/cleanup"
+# This is a workflow used to validate the behavior of an action in this repo.
+name: "Test Action: create-ci-branch/clean"
 
 on:
   push:
     paths: &paths
-      - .github/workflows/test-action-create-ci-branch.yaml
+      #
+      # ----- BEGIN DETECTED DEPENDENCIES -----
+      - checkout-as-app/action.yaml
+      - cleanup-hook/action-main.js
+      - cleanup-hook/action-post.js
+      - cleanup-hook/action.yaml
+      - cleanup-hook/inputs.js
+      - create-ci-branch/action.yaml
+      - create-ci-branch/cleanup/action.yaml
+      - create-ci-branch/cleanup/cleanup.sh
+      - .github/workflows/test-action-checkout-as-app.yaml
+      - .github/workflows/test-action-cleanup-hook.yaml
       - .github/workflows/test-action-create-ci-branch-cleanup.yaml
-      - create-ci-branch/**
-      - checkout-as-app/** # dependency
+      - .github/workflows/test-action-create-ci-branch.yaml
+      # ----- END DETECTED DEPENDENCIES -----
   pull_request:
     paths: *paths
 
@@ -14,14 +26,6 @@ env:
   TEST_REPO: eth-p/gh-actions-test-repo
 
 jobs:
-  meta:
-    name: "Passed - create-ci-branch/cleanup"
-    runs-on: ubuntu-latest
-    steps: [{ run: "true" }]
-    needs:
-      - test-one-branch
-      - test-extra-branches
-
   test-one-branch:
     name: "Deletes Created Branch"
     runs-on: ubuntu-latest

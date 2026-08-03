@@ -1,13 +1,25 @@
+# This is a workflow used to validate the behavior of an action in this repo.
 name: "Test Action: update-pr"
 
 on:
   push:
     paths: &paths
+      #
+      # ----- BEGIN DETECTED DEPENDENCIES -----
+      - checkout-as-app/action.yaml
+      - cleanup-hook/action-main.js
+      - cleanup-hook/action-post.js
+      - cleanup-hook/action.yaml
+      - cleanup-hook/inputs.js
+      - create-ci-branch/action.yaml
+      - create-ci-branch/cleanup/action.yaml
+      - create-ci-branch/cleanup/cleanup.sh
+      - .github/workflows/test-action-checkout-as-app.yaml
+      - .github/workflows/test-action-cleanup-hook.yaml
+      - .github/workflows/test-action-create-ci-branch.yaml
       - .github/workflows/test-action-update-pr.yaml
-      - update-pr/**
-      - create-ci-branch/** # test dependency
-      - checkout-as-app/** # test dependency
-      - cleanup-hook/** # test dependency
+      - update-pr/action.yaml
+      # ----- END DETECTED DEPENDENCIES -----
   pull_request:
     paths: *paths
 
@@ -16,15 +28,6 @@ env:
   TEST_BRANCH: "" # set within jobs when running $/create-ci-branch
 
 jobs:
-  meta:
-    name: "Passed - update-pr"
-    runs-on: ubuntu-latest
-    steps: [{ run: "true" }]
-    needs:
-      - test-when-nothing-to-merge
-      - test-updates-pr
-      - test-creates-pr
-
   test-when-nothing-to-merge:
     name: "When Nothing to Merge"
     runs-on: ubuntu-latest
