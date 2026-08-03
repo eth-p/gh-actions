@@ -33,6 +33,11 @@ inputs:
     default: "false"
     required: false
 
+  set-env-var:
+    description: "If specified, sets this environment variable to the branch name in future steps."
+    default: "TEST_BRANCH"
+    required: false
+
 outputs:
   branch:
     description: "The generated branch name."
@@ -109,6 +114,15 @@ runs:
         git commit -m "ci: ${RUN_URL}"
         git push origin "$BRANCH"
 
+    - name: "Set environment variable to newly-created branch"
+      if: ${{ inputs.set-env-var != '' }}
+      shell: bash
+      env:
+        BRANCH: ${{ steps.vars.outputs.branch }}
+        SET_ENV_VAR: ${{ inputs.set-env-var }}
+      run: |-
+        printf "%s=%s\n" "$SET_ENV_VAR" "$BRANCH" >>"$GITHUB_ENV"
+
     - name: "Add cleanup hook"
       if: ${{ inputs.cleanup-after-job != 'false' }}
       env:
@@ -121,5 +135,3 @@ runs:
         run: |-
           set -euo pipefail
           bash "${GITHUB_ACTION_PATH}/cleanup/cleanup.sh"
-
-
