@@ -1,0 +1,30 @@
+name: "Actions Assert"
+description: "Run asserts to check the results of an action."
+inputs:
+  working-directory:
+    description: "The working directory to run the checks under."
+    required: false
+    default: "."
+
+  outputs:
+    description: "The outputs of the action as JSON."
+    required: false
+    default: "{}"
+
+  asserts:
+    description: "The assertions to run."
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Run assertions"
+      shell: bash
+      env:
+        ACTIONS_ASSERT_ASSERTIONS: ${{ inputs.asserts }}
+        ACTIONS_ASSERT_OUTPUTS_INPUT: ${{ inputs.outputs }}
+        ACTIONS_ASSERT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+      run: |-
+        set -euo pipefail
+        cd "$ACTIONS_ASSERT_WORKING_DIRECTORY"
+        bash "${GITHUB_ACTION_PATH}/asserts.sh"
