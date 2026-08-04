@@ -6,6 +6,8 @@ on:
     paths: &paths
       #
       # ----- BEGIN DETECTED DEPENDENCIES -----
+      - actions-assert/action.yaml
+      - actions-assert/asserts.sh
       - checkout-as-app/action.yaml
       - cleanup-hook/action-main.js
       - cleanup-hook/action-post.js
@@ -14,6 +16,7 @@ on:
       - create-ci-branch/action.yaml
       - create-ci-branch/cleanup/action.yaml
       - create-ci-branch/cleanup/cleanup.sh
+      - .github/workflows/test-action-actions-assert.yaml
       - .github/workflows/test-action-checkout-as-app.yaml
       - .github/workflows/test-action-cleanup-hook.yaml
       - .github/workflows/test-action-create-ci-branch.yaml
@@ -77,30 +80,33 @@ jobs:
           branch: ${{ steps.test-branch.outputs.branch }}-target
           create-branch: false
 
-      - name: "Assert: Target branch caught up to base"
+      - name: "Fetch and checkout rebased branch"
         shell: bash
         run: |-
           set -euo pipefail
           git fetch origin "${TEST_BRANCH}" "${TEST_BRANCH}-target"
           git checkout "refs/remotes/origin/${TEST_BRANCH}-target"
 
-          if ! [[ -e file-in-base.txt ]]; then
-            printf "\x1B[31mChanges from base branch were lost.\x1B[m"
-            exit 1
-          fi
+      - name: "Run assertions"
+        id: assert
+        uses: $/actions-assert
+        with:
+          outputs: ${{ toJson(steps.action.outputs) }}
+          asserts: |-
+            - name: "Changes from base branch were kept"
+              run: 'test -e file-in-base.txt'
+              is: ok
 
-          if ! [[ -e file-in-target.txt ]]; then
-            printf "\x1B[31mChanges from target branch were lost.\x1B[m"
-            exit 1
-          fi
+            - name: "Changes from target branch were kept"
+              run: 'test -e file-in-target.txt'
+              is: ok
 
-          if ! git merge-base --is-ancestor \
-            "refs/remotes/origin/${TEST_BRANCH}" \
-            "refs/remotes/origin/${TEST_BRANCH}-target";
-          then
-            printf "\x1B[31mBase branch is not ancestor of rebased target branch.\x1B[m"
-            exit 1
-          fi
+            - name: "Base branch is ancestor of target branch"
+              is: ok
+              run: |-
+                git merge-base --is-ancestor \
+                  "refs/remotes/origin/${TEST_BRANCH}" \
+                  "refs/remotes/origin/${TEST_BRANCH}-target"
 
   test-when-behind:
     name: "When Behind Base"
@@ -148,25 +154,30 @@ jobs:
           branch: ${{ steps.test-branch.outputs.branch }}-target
           create-branch: false
 
-      - name: "Assert: Target branch caught up to base"
-        env:
-          COMMIT: ${{ steps.setup.outputs.commit }}
+      - name: "Fetch and checkout rebased branch"
         shell: bash
         run: |-
           set -euo pipefail
           git fetch origin "${TEST_BRANCH}" "${TEST_BRANCH}-target"
-          branch_commit=$(git rev-parse "refs/remotes/origin/${TEST_BRANCH}-target")
-          base_commit=$(git rev-parse "refs/remotes/origin/${TEST_BRANCH}")
+          git checkout "refs/remotes/origin/${TEST_BRANCH}-target"
 
-          printf "%s: %s\n" \
-            "Expected" "$COMMIT" \
-            "Branch  " "$branch_commit" \
-            "Base    " "$base_commit"
+      - name: "Run assertions"
+        id: assert
+        uses: $/actions-assert
+        env: { BASE_COMMIT: "${{ steps.setup.outputs.commit }}" }
+        with:
+          outputs: ${{ toJson(steps.action.outputs) }}
+          asserts: |-
+            - name: "Changes from base branch were kept"
+              run: 'test -e file.txt'
+              is: ok
 
-          if [[ "$branch_commit" != "$COMMIT" ]]; then
-            printf "\x1B[31mTarget branch did not catch up to base branch.\x1B[m"
-            exit 1
-          fi
+            - name: "Base branch is ancestor of target branch"
+              is: ok
+              run: |-
+                git merge-base --is-ancestor \
+                  "${BASE_COMMIT}" \
+                  "refs/remotes/origin/${TEST_BRANCH}-target"
 
   test-when-ahead:
     name: "When Ahead of Base"
@@ -211,25 +222,37 @@ jobs:
           branch: ${{ steps.test-branch.outputs.branch }}-target
           create-branch: false
 
-      - name: "Assert: Target branch still ahead of base"
-        env:
-          COMMIT: ${{ steps.setup.outputs.commit }}
+      - name: "Fetch and checkout rebased branch"
         shell: bash
         run: |-
           set -euo pipefail
           git fetch origin "${TEST_BRANCH}" "${TEST_BRANCH}-target"
-          branch_commit=$(git rev-parse "refs/remotes/origin/${TEST_BRANCH}-target")
-          base_commit=$(git rev-parse "refs/remotes/origin/${TEST_BRANCH}")
+          git checkout "refs/remotes/origin/${TEST_BRANCH}-target"
 
-          printf "%s: %s\n" \
-            "Expected" "$COMMIT" \
-            "Branch  " "$branch_commit" \
-            "Base    " "$base_commit"
+      - name: "Run assertions"
+        id: assert
+        uses: $/actions-assert
+        with:
+          outputs: ${{ toJson(steps.action.outputs) }}
+          asserts: |-
+            - name: "Changes from target branch were kept"
+              run: 'test -e file.txt'
+              is: ok
 
-          if [[ "$branch_commit" != "$COMMIT" ]]; then
-            printf "\x1B[31mTarget branch should not have changed.\x1B[m"
-            exit 1
-          fi
+            - name: "Target branch HEAD is unchanged"
+              is: ok
+              run: 'git rev-parse HEAD'
+              is:
+                - ok
+                - equal: |-
+                    ${{ steps.setup.outputs.commit }}
+
+            - name: "Base branch is ancestor of target branch"
+              is: ok
+              run: |-
+                git merge-base --is-ancestor \
+                  "refs/remotes/origin/${TEST_BRANCH}" \
+                  "refs/remotes/origin/${TEST_BRANCH}-target"
 
   test-when-same-commit:
     name: "When Up-to-date"
@@ -266,30 +289,34 @@ jobs:
           base: ${{ steps.test-branch.outputs.branch }}
           branch: ${{ steps.test-branch.outputs.branch }}-target
 
-      - name: "Assert: Commits unchanged"
-        env:
-          COMMIT: ${{ steps.setup.outputs.commit }}
+      - name: "Fetch and checkout rebased branch"
         shell: bash
         run: |-
           set -euo pipefail
           git fetch origin "${TEST_BRANCH}" "${TEST_BRANCH}-target"
-          branch_commit=$(git rev-parse "refs/remotes/origin/${TEST_BRANCH}-target")
-          base_commit=$(git rev-parse "refs/remotes/origin/${TEST_BRANCH}")
+          git checkout "refs/remotes/origin/${TEST_BRANCH}-target"
 
-          printf "%s: %s\n" \
-            "Expected" "$COMMIT" \
-            "Branch  " "$branch_commit" \
-            "Base    " "$base_commit"
+      - name: "Run assertions"
+        id: assert
+        uses: $/actions-assert
+        with:
+          outputs: ${{ toJson(steps.action.outputs) }}
+          asserts: |-
+            - name: "Target branch HEAD is unchanged"
+              is: ok
+              run: 'git rev-parse "refs/remotes/origin/${TEST_BRANCH}-target"'
+              is:
+                - ok
+                - equal: |-
+                    ${{ steps.setup.outputs.commit }}
 
-          if [[ "$branch_commit" != "$COMMIT" ]]; then
-            printf "\x1B[31mTarget branch was changed.\x1B[m"
-            exit 1
-          fi
-
-          if [[ "$base_commit" != "$COMMIT" ]]; then
-            printf "\x1B[Base branch was changed.\x1B[m"
-            exit 1
-          fi
+            - name: "Base branch HEAD is unchanged"
+              is: ok
+              run: 'git rev-parse "refs/remotes/origin/${TEST_BRANCH}"'
+              is:
+                - ok
+                - equal: |-
+                    ${{ steps.setup.outputs.commit }}
 
   test-creates-branch:
     name: "When Branch Not Exists"
@@ -317,11 +344,15 @@ jobs:
           base: ${{ steps.test-branch.outputs.branch }}
           branch: ${{ steps.test-branch.outputs.branch }}-target
 
-      - name: "Assert: Target branch created"
-        env:
-          BRANCH: ${{ steps.test-branch.outputs.branch }}
-        shell: bash
-        run: |-
-          set -euo pipefail
-          git fetch origin "${TEST_BRANCH}" "${TEST_BRANCH}-target"
-          git rev-parse "refs/remotes/origin/${TEST_BRANCH}-target"
+      - name: "Run assertions"
+        id: assert
+        uses: $/actions-assert
+        with:
+          outputs: ${{ toJson(steps.action.outputs) }}
+          asserts: |-
+            - name: "Target branch was created"
+              is: [ok, not empty]
+              run: |-
+                git fetch origin "${TEST_BRANCH}" "${TEST_BRANCH}-target" 1>&2
+                git rev-parse "refs/remotes/origin/${TEST_BRANCH}-target"
+                git rev-parse "refs/remotes/origin/${TEST_BRANCH}-target"'

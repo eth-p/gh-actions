@@ -6,6 +6,8 @@ on:
     paths: &paths
       #
       # ----- BEGIN DETECTED DEPENDENCIES -----
+      - actions-assert/action.yaml
+      - actions-assert/asserts.sh
       - checkout-as-app/action.yaml
       - cleanup-hook/action-main.js
       - cleanup-hook/action-post.js
@@ -14,6 +16,7 @@ on:
       - create-ci-branch/action.yaml
       - create-ci-branch/cleanup/action.yaml
       - create-ci-branch/cleanup/cleanup.sh
+      - .github/workflows/test-action-actions-assert.yaml
       - .github/workflows/test-action-checkout-as-app.yaml
       - .github/workflows/test-action-cleanup-hook.yaml
       - .github/workflows/test-action-create-ci-branch.yaml
@@ -58,19 +61,19 @@ jobs:
           body: ${{ steps.test-branch.outputs.banner }}
           labels: ci
 
-      - name: "Output: number (should be empty)"
-        shell: bash
-        env: { OUTPUT: "${{ steps.action.outputs.number }}" }
-        run: |-
-          set -euo pipefail
-          test -z "$OUTPUT"
+      - name: "Run assertions"
+        id: assert
+        uses: $/actions-assert
+        with:
+          outputs: ${{ toJson(steps.action.outputs) }}
+          asserts: |-
+            - name: "Output 'number' is empty when no PR created"
+              output: number
+              is: empty
 
-      - name: "Output: url (should be empty)"
-        shell: bash
-        env: { OUTPUT: "${{ steps.action.outputs.url }}" }
-        run: |-
-          set -euo pipefail
-          test -z "$OUTPUT"
+            - name: "Output 'url' is empty when no PR created"
+              output: url
+              is: empty
 
   test-updates-pr:
     name: "Updates Existing PR"
@@ -126,68 +129,50 @@ jobs:
             ci
             test
 
-      - name: "Assert: PR Exists"
-        shell: bash
+      - name: "Run assertions"
+        id: assert
+        uses: $/actions-assert
         env:
           PR_NUMBER: "${{ steps.action.outputs.number }}"
           GH_TOKEN: "${{ steps.test-branch.outputs.token }}"
           REPO: "${{ env.TEST_REPO }}"
-        run: |-
-          set -euo pipefail
-          gh pr view --repo "$REPO" "$PR_NUMBER"
+        with:
+          outputs: ${{ toJson(steps.action.outputs) }}
+          asserts: |-
+            - name: "PR exists"
+              is: [ok]
+              run: 'gh pr view --repo "$REPO" "$PR_NUMBER"'
 
-      - name: "Assert: PR Title Updated"
-        shell: bash
-        env:
-          PR_NUMBER: "${{ steps.action.outputs.number }}"
-          GH_TOKEN: "${{ steps.test-branch.outputs.token }}"
-          REPO: "${{ env.TEST_REPO }}"
-        run: |-
-          set -euo pipefail
-          title=$(gh pr view --repo "$REPO" "$PR_NUMBER" --json title | jq -r '.title')
-          sed 's/^/│ /' <<<"$title"
-          grep -F "<UPDATED>" <<<"$title"
+            - name: "PR title was updated"
+              run: |-
+                gh pr view --repo "$REPO" "$PR_NUMBER" --json title | jq -r '.title'
+              is:
+                - ok
+                - contains: "<UPDATED>"
 
-      - name: "Assert: PR Body Updated"
-        shell: bash
-        env:
-          PR_NUMBER: "${{ steps.action.outputs.number }}"
-          GH_TOKEN: "${{ steps.test-branch.outputs.token }}"
-          REPO: "${{ env.TEST_REPO }}"
-        run: |-
-          set -euo pipefail
-          title=$(gh pr view --repo "$REPO" "$PR_NUMBER" --json body | jq -r '.body')
-          sed 's/^/│ /' <<<"$title"
-          grep -F "<UPDATED>" <<<"$title"
+            - name: "PR body was updated"
+              run: |-
+                gh pr view --repo "$REPO" "$PR_NUMBER" --json body | jq -r '.body'
+              is:
+                - ok
+                - contains: "<UPDATED>"
 
-      - name: "Output: number"
-        shell: bash
-        env: { OUTPUT: "${{ steps.action.outputs.number }}" }
-        run: |-
-          set -euo pipefail
-          test -n "$OUTPUT"
+            - name: "Output 'number' is set"
+              output: number
+              is: not empty
 
-      - name: "Output: url"
-        shell: bash
-        env: { OUTPUT: "${{ steps.action.outputs.url }}" }
-        run: |-
-          set -euo pipefail
-          test -n "$OUTPUT"
+            - name: "Output 'url' is set"
+              output: url
+              is: not empty
 
-      - name: "Output: title"
-        shell: bash
-        env: { OUTPUT: "${{ steps.action.outputs.title }}" }
-        run: |-
-          set -euo pipefail
-          test -n "$OUTPUT"
+            - name: "Output 'title' is set"
+              output: title
+              is: not empty
 
-      - name: "Output: body-file"
-        shell: bash
-        env: { OUTPUT: "${{ steps.action.outputs.body-file }}" }
-        run: |-
-          set -euo pipefail
-          test -n "$OUTPUT"
-          test "$(wc -c <"$OUTPUT")" -ne 0
+            - name: "Output 'body-file' is set"
+              output: body-file
+              is: not empty
+
 
   test-creates-pr:
     name: "Creates New PR"
@@ -226,16 +211,24 @@ jobs:
             ${{ steps.test-branch.outputs.banner }}
             Job: ${{ github.job }}
 
-      - name: "Output: number"
-        shell: bash
-        env: { OUTPUT: "${{ steps.action.outputs.number }}" }
-        run: |-
-          set -euo pipefail
-          test -n "$OUTPUT"
+      - name: "Run assertions"
+        id: assert
+        uses: $/actions-assert
+        env:
+          PR_NUMBER: "${{ steps.action.outputs.number }}"
+          GH_TOKEN: "${{ steps.test-branch.outputs.token }}"
+          REPO: "${{ env.TEST_REPO }}"
+        with:
+          outputs: ${{ toJson(steps.action.outputs) }}
+          asserts: |-
+            - name: "PR exists"
+              is: [ok]
+              run: 'gh pr view --repo "$REPO" "$PR_NUMBER"'
 
-      - name: "Output: url"
-        shell: bash
-        env: { OUTPUT: "${{ steps.action.outputs.url }}" }
-        run: |-
-          set -euo pipefail
-          test -n "$OUTPUT"
+            - name: "Output 'number' is set"
+              output: number
+              is: not empty
+
+            - name: "Output 'url' is set"
+              output: url
+              is: not empty

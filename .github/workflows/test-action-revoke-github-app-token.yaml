@@ -6,6 +6,9 @@ on:
     paths: &paths
       #
       # ----- BEGIN DETECTED DEPENDENCIES -----
+      - actions-assert/action.yaml
+      - actions-assert/asserts.sh
+      - .github/workflows/test-action-actions-assert.yaml
       - .github/workflows/test-action-revoke-github-app-token.yaml
       - revoke-github-app-token/action.yaml
       # ----- END DETECTED DEPENDENCIES -----
@@ -42,18 +45,18 @@ jobs:
         with:
           token: ${{ steps.app-token.outputs.token }}
 
-      - name: "Assert: Token Revoked"
-        shell: bash
-        env: { GH_TOKEN: "${{ steps.app-token.outputs.token }}" }
-        run: |-
-          set -euo pipefail
-          if gh auth status &>/dev/null; then
-            printf "\x1B[31mToken is still usable.\x1B[m"
-            exit 1
-          fi
+      - name: "Run assertions"
+        id: assert
+        uses: $/actions-assert
+        with:
+          outputs: ${{ toJson(steps.action.outputs) }}
+          asserts: |-
+            - name: "Token was revoked"
+              is: {not: ok}
+              run: 'gh auth status'
 
       - &ensure-revoke
-        name: "Ensure token is revoked"
+        name: "Ensure token is revoked even if action fails"
         env: { GH_TOKEN: "${{ steps.app-token.outputs.token }}" }
         if: ${{ always() }}
         run: gh api --method DELETE /installation/token || true

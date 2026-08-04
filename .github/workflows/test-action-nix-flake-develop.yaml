@@ -6,6 +6,9 @@ on:
     paths: &paths
       #
       # ----- BEGIN DETECTED DEPENDENCIES -----
+      - actions-assert/action.yaml
+      - actions-assert/asserts.sh
+      - .github/workflows/test-action-actions-assert.yaml
       - .github/workflows/test-action-nix-flake-develop.yaml
       - nix-flake-develop/action.yaml
       # ----- END DETECTED DEPENDENCIES -----
@@ -27,29 +30,21 @@ jobs:
         with:
           flake: ./test-data/nix-flake
 
-      - name: "Output: activate-bash"
-        shell: bash
-        env: { OUTPUT: "${{ steps.action.outputs.activate-bash }}" }
-        run: |-
-          set -euo pipefail
-          test -n "$OUTPUT"
+      - name: "Run assertions"
+        id: assert
+        uses: $/actions-assert
+        env: { ACTIVATE_BASH: "${{ steps.action.outputs.activate-bash }}" }
+        with:
+          outputs: ${{ toJson(steps.action.outputs) }}
+          asserts: |-
+            - name: "Output 'activate-bash' is not empty"
+              output: activate-bash
+              is: not empty
 
-      - name: "Assert: Executables added to PATH"
-        shell: bash
-        env: { OUTPUT: "${{ steps.action.outputs.activate-bash }}" }
-        run: |-
-          set -euo pipefail
+            - name: "Can source 'activate-bash' to enter develop shell"
+              run: 'source "$ACTIVATE_BASH"'
+              is: [ok]
 
-          if ! [[ $(command -v hello) =~ ^/nix/ ]]; then
-            printf "\x1B[31mhello command is not under nix store\x1B[m\n"
-            exit 1
-          fi
-
-      - name: "Assert: Can source develop profile"
-        shell: bash
-        env: { OUTPUT: "${{ steps.action.outputs.activate-bash }}" }
-        run: |-
-          set -euo pipefail
-
-          # shellcheck disable=SC1090
-          source "$OUTPUT"
+            - name: "PATH is updated to have executables from develop shell"
+              run: 'hello'
+              is: [ok]

@@ -6,7 +6,10 @@ on:
     paths: &paths
       #
       # ----- BEGIN DETECTED DEPENDENCIES -----
+      - actions-assert/action.yaml
+      - actions-assert/asserts.sh
       - checkout-as-app/action.yaml
+      - .github/workflows/test-action-actions-assert.yaml
       - .github/workflows/test-action-checkout-as-app.yaml
       # ----- END DETECTED DEPENDENCIES -----
   pull_request:
@@ -27,51 +30,38 @@ jobs:
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
           repository: ${{ env.TEST_REPO }}
 
-      - name: "Assert: Repo Cloned"
-        shell: bash
-        run: |-
-          set -euo pipefail
-          set -x
-          git rev-parse HEAD
+      - name: "Run assertions"
+        id: assert
+        uses: $/actions-assert
+        with:
+          outputs: ${{ toJson(steps.action.outputs) }}
+          asserts: |-
+            - name: "Repo is cloned"
+              is: [ok, not empty]
+              run: 'git rev-parse HEAD'
 
-      - name: "Assert: Repo is Shallow"
-        shell: bash
-        run: |-
-          set -euo pipefail
-          if [[ $(git rev-parse --is-shallow-repository) != "true" ]]; then
-            printf "\x1B[31mNot cloned as a shallow repo.\x1B[m\n"
-            exit 1
-          fi
+            - name: "Repo is shallow"
+              run: 'git rev-parse --is-shallow-repository'
+              is:
+                - ok
+                - equal: true
 
-      - name: "Assert: Local user.name configured"
-        shell: bash
-        run: |-
-          set -euo pipefail
-          git config --local user.name
+            - name: "Git user.name configured"
+              is: [ok, not empty]
+              run: 'git config --local user.name'
 
-      - name: "Assert: Local user.email configured"
-        shell: bash
-        run: |-
-          set -euo pipefail
-          git config --local user.email
+            - name: "Git user.email configured"
+              is: [ok, not empty]
+              run: 'git config --local user.email'
 
-      - name: "Output: git-name"
-        shell: bash
-        env: { OUTPUT: "${{ steps.action.outputs.git-name }}" }
-        run: |-
-          set -euo pipefail
-          test -n "$OUTPUT"
+            - name: "Output 'git-name' is set"
+              output: git-name
+              is: not empty
 
-      - name: "Output: git-email"
-        shell: bash
-        env: { OUTPUT: "${{ steps.action.outputs.git-email }}" }
-        run: |-
-          set -euo pipefail
-          test -n "$OUTPUT"
+            - name: "Output 'git-email' is set"
+              output: git-email
+              is: not empty
 
-      - name: "Output: token"
-        shell: bash
-        env: { OUTPUT: "${{ steps.action.outputs.token }}" }
-        run: |-
-          set -euo pipefail
-          test -n "$OUTPUT"
+            - name: "Output 'token' is set"
+              output: token
+              is: not empty

@@ -6,6 +6,9 @@ on:
     paths: &paths
       #
       # ----- BEGIN DETECTED DEPENDENCIES -----
+      - actions-assert/action.yaml
+      - actions-assert/asserts.sh
+      - .github/workflows/test-action-actions-assert.yaml
       - .github/workflows/test-action-setup-git.yaml
       - setup-git/action.yaml
       # ----- END DETECTED DEPENDENCIES -----
@@ -23,31 +26,27 @@ jobs:
       - id: action
         uses: $/setup-git
 
-      - name: "Assert: Git is configured"
-        shell: bash
-        run: |-
-          set -euo pipefail
-          git_name=$(git config user.name) || true
-          git_email=$(git config user.email) || true
+      - name: "Run assertions"
+        id: assert
+        uses: $/actions-assert
+        with:
+          outputs: ${{ toJson(steps.action.outputs) }}
+          asserts: |-
+            - name: "Git user.name configured"
+              is: [ok, not empty]
+              run: 'git config user.name'
 
-          echo "name: $git_name"
-          echo "email: $git_email"
-          test -n "$git_name"
-          test -n "$git_email"
+            - name: "Git user.email configured"
+              is: [ok, not empty]
+              run: 'git config user.email'
 
-      - name: "Output: git-user-name"
-        shell: bash
-        env: { OUTPUT: "${{ steps.action.outputs.git-user-name }}" }
-        run: |-
-          set -euo pipefail
-          test -n "$OUTPUT"
+            - name: "Output 'git-user-name' is set"
+              output: git-user-name
+              is: not empty
 
-      - name: "Output: git-user-email"
-        shell: bash
-        env: { OUTPUT: "${{ steps.action.outputs.git-user-name }}" }
-        run: |-
-          set -euo pipefail
-          test -n "$OUTPUT"
+            - name: "Output 'git-user-email' is set"
+              output: git-user-email
+              is: not empty
 
   test-detect-app-info:
     name: "Detects from GitHub App"
@@ -67,31 +66,27 @@ jobs:
         with:
           github-token: ${{ steps.app-token.outputs.token }}
 
-      - name: "Assert: Git is configured"
-        shell: bash
-        run: |-
-          set -euo pipefail
-          git_name=$(git config user.name) || true
-          git_email=$(git config user.email) || true
+      - name: "Run assertions"
+        id: assert
+        uses: $/actions-assert
+        with:
+          outputs: ${{ toJson(steps.action.outputs) }}
+          asserts: |-
+            - name: "Git user.name configured"
+              is: [ok, not empty]
+              run: 'git config user.name'
 
-          echo "name: $git_name"
-          echo "email: $git_email"
-          test -n "$git_name"
-          test -n "$git_email"
+            - name: "Git user.email configured"
+              is: [ok, not empty]
+              run: 'git config user.email'
 
-      - name: "Output: git-user-name"
-        shell: bash
-        env: { OUTPUT: "${{ steps.action.outputs.git-user-name }}" }
-        run: |-
-          set -euo pipefail
-          test -n "$OUTPUT"
+            - name: "Output 'git-user-name' is set"
+              output: git-user-name
+              is: not empty
 
-      - name: "Output: git-user-email"
-        shell: bash
-        env: { OUTPUT: "${{ steps.action.outputs.git-user-name }}" }
-        run: |-
-          set -euo pipefail
-          test -n "$OUTPUT"
+            - name: "Output 'git-user-email' is set"
+              output: git-user-email
+              is: not empty
 
   test-scope-local:
     name: "Scoped to local repo"
@@ -104,17 +99,27 @@ jobs:
         with:
           scope: local
 
-      - name: "Assert: Git is configured"
-        shell: bash
-        run: |-
-          set -euo pipefail
-          git_name=$(git config --local user.name) || true
-          git_email=$(git config --local user.email) || true
+      - name: "Run assertions"
+        id: assert
+        uses: $/actions-assert
+        with:
+          outputs: ${{ toJson(steps.action.outputs) }}
+          asserts: |-
+            - name: "Git user.name configured"
+              is: [ok, not empty]
+              run: 'git config --local user.name'
 
-          echo "name: $git_name"
-          echo "email: $git_email"
-          test -n "$git_name"
-          test -n "$git_email"
+            - name: "Git user.email configured"
+              is: [ok, not empty]
+              run: 'git config --local user.email'
+
+            - name: "Output 'git-user-name' is set"
+              output: git-user-name
+              is: not empty
+
+            - name: "Output 'git-user-email' is set"
+              output: git-user-email
+              is: not empty
 
   test-scope-global:
     name: "Scoped to global git config"
@@ -127,14 +132,24 @@ jobs:
         with:
           scope: global
 
-      - name: "Assert: Git is configured"
-        shell: bash
-        run: |-
-          set -euo pipefail
-          git_name=$(git config --global user.name) || true
-          git_email=$(git config --global user.email) || true
+      - name: "Run assertions"
+        id: assert
+        uses: $/actions-assert
+        with:
+          outputs: ${{ toJson(steps.action.outputs) }}
+          asserts: |-
+            - name: "Git user.name configured"
+              is: [ok, not empty]
+              run: 'git config --global user.name'
 
-          echo "name: $git_name"
-          echo "email: $git_email"
-          test -n "$git_name"
-          test -n "$git_email"
+            - name: "Git user.email configured"
+              is: [ok, not empty]
+              run: 'git config --global user.email'
+
+            - name: "Output 'git-user-name' is set"
+              output: git-user-name
+              is: not empty
+
+            - name: "Output 'git-user-email' is set"
+              output: git-user-email
+              is: not empty

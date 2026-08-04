@@ -6,6 +6,8 @@ on:
     paths: &paths
       #
       # ----- BEGIN DETECTED DEPENDENCIES -----
+      - actions-assert/action.yaml
+      - actions-assert/asserts.sh
       - checkout-as-app/action.yaml
       - cleanup-hook/action-main.js
       - cleanup-hook/action-post.js
@@ -14,6 +16,7 @@ on:
       - create-ci-branch/action.yaml
       - create-ci-branch/cleanup/action.yaml
       - create-ci-branch/cleanup/cleanup.sh
+      - .github/workflows/test-action-actions-assert.yaml
       - .github/workflows/test-action-checkout-as-app.yaml
       - .github/workflows/test-action-cleanup-hook.yaml
       - .github/workflows/test-action-create-ci-branch-cleanup.yaml
@@ -45,27 +48,25 @@ jobs:
           github-token: ${{ steps.test-branch.outputs.token }}
           branch: ${{ steps.test-branch.outputs.branch }}
 
-      - name: "Assert: Branch no longer exists on remote"
-        shell: bash
-        run: |-
-          set -euo pipefail
-          test -z "$(git ls-remote origin "refs/heads/${TEST_BRANCH}")"
+      - name: "Run assertions"
+        id: assert
+        uses: $/actions-assert
+        with:
+          outputs: ${{ toJson(steps.action.outputs) }}
+          asserts: |-
+            - name: "Branch no longer exists on remote"
+              is: [ok, empty]
+              run: 'git ls-remote origin "refs/heads/${TEST_BRANCH}"'
 
-      - name: "Output: count"
-        shell: bash
-        env: { OUTPUT: "${{ steps.action.outputs.count }}" }
-        run: |-
-          set -euo pipefail
-          test "$OUTPUT" -eq 1
+            - name: "Output 'count' matches number of deleted branches"
+              output: count
+              is:
+                - equal: "1"
 
-      - name: "Output: branches"
-        shell: bash
-        env:
-          OUTPUT: ${{ steps.action.outputs.branches }}
-          EXPECTED: ${{ steps.test-branch.outputs.branch }}
-        run: |-
-          set -euo pipefail
-          test "$OUTPUT" = "$EXPECTED"
+            - name: "Output 'branches' contains the deleted branch"
+              output: branches
+              is:
+                - equal: "${{ steps.test-branch.outputs.branch }}"
 
   test-extra-branches:
     name: "Deletes Additional Branches"
@@ -92,33 +93,27 @@ jobs:
           github-token: ${{ steps.test-branch.outputs.token }}
           branch: ${{ steps.test-branch.outputs.branch }}
 
-      - name: "Assert: Branch no longer exists on remote"
-        shell: bash
-        run: |-
-          set -euo pipefail
-          test -z "$(git ls-remote origin "refs/heads/${TEST_BRANCH}")"
+      - name: "Run assertions"
+        id: assert
+        uses: $/actions-assert
+        with:
+          outputs: ${{ toJson(steps.action.outputs) }}
+          asserts: |-
+            - name: "Branch no longer exists on remote"
+              is: [ok, empty]
+              run: 'git ls-remote origin "refs/heads/${TEST_BRANCH}"'
 
-      - name: "Assert: Extra branch no longer exists on remote"
-        shell: bash
-        run: |-
-          set -euo pipefail
-          test -z "$(git ls-remote origin "refs/heads/${TEST_BRANCH}-extra")"
+            - name: "Extra branch no longer exists on remote"
+              is: [ok, empty]
+              run: 'git ls-remote origin "refs/heads/${TEST_BRANCH}-extra"'
 
-      - name: "Output: count"
-        shell: bash
-        env: { OUTPUT: "${{ steps.action.outputs.count }}" }
-        run: |-
-          set -euo pipefail
-          test "$OUTPUT" -eq 2
+            - name: "Output 'count' matches number of deleted branches"
+              output: count
+              is:
+                - equal: "2"
 
-      - name: "Output: branches"
-        shell: bash
-        env:
-          OUTPUT: ${{ steps.action.outputs.branches }}
-          EXPECTED_1: ${{ steps.test-branch.outputs.branch }}
-          EXPECTED_2: "${{ steps.test-branch.outputs.branch }}-extra"
-        run: |-
-          set -euo pipefail
-          set -x
-          grep -Fx "$EXPECTED_1" <<<"$OUTPUT"
-          grep -Fx "$EXPECTED_2" <<<"$OUTPUT"
+            - name: "Output 'branches' contains the deleted branches"
+              output: branches
+              is:
+                - contains-line: "${{ steps.test-branch.outputs.branch }}"
+                - contains-line: "${{ steps.test-branch.outputs.branch }}-extra"

@@ -6,6 +6,8 @@ on:
     paths: &paths
       #
       # ----- BEGIN DETECTED DEPENDENCIES -----
+      - actions-assert/action.yaml
+      - actions-assert/asserts.sh
       - checkout-as-app/action.yaml
       - cleanup-hook/action-main.js
       - cleanup-hook/action-post.js
@@ -15,6 +17,7 @@ on:
       - create-ci-branch/cleanup/action.yaml
       - create-ci-branch/cleanup/cleanup.sh
       - .github/workflows/run-package-update-scripts.yaml
+      - .github/workflows/test-action-actions-assert.yaml
       - .github/workflows/test-action-checkout-as-app.yaml
       - .github/workflows/test-action-cleanup-hook.yaml
       - .github/workflows/test-action-create-ci-branch-cleanup.yaml
@@ -109,27 +112,24 @@ jobs:
           repository: ${{ env.TEST_REPO }}
           ref: ${{ needs.test-when-has-updates-setup.outputs.branch }}-pr
 
-      - name: "Assert: Has changes from foo script"
-        env: { BRANCH: "${{ needs.test-when-has-updates-setup.outputs.branch }}" }
-        shell: bash
-        run: |-
-          set -euo pipefail
-          test -f foo
-
-      - name: "Assert: Has changes from bar script"
-        env: { BRANCH: "${{ needs.test-when-has-updates-setup.outputs.branch }}" }
-        shell: bash
-        run: |-
-          set -euo pipefail
-          test -f bar
-
-      - name: "Assert: Has pull request"
+      - name: "Run assertions"
+        id: assert
+        uses: $/actions-assert
         env:
           GH_TOKEN: ${{ steps.checkout.outputs.token }}
-        shell: bash
-        run: |-
-          set -euo pipefail
-          gh pr view
+        with:
+          asserts: |-
+            - name: "Has changes from 'foo' script"
+              is: [ok, not empty]
+              run: stat foo
+
+            - name: "Has changes from 'bar' script"
+              is: [ok, not empty]
+              run: stat bar
+
+            - name: "Created a pull request"
+              is: [ok, not empty]
+              run: gh pr view
 
   test-when-has-updates-cleanup:
     name: "When Has Updates (Cleanup)"
