@@ -1,12 +1,12 @@
-name: "Cleanup CI Branch"
-description: "Cleans up a branch created by create-ci-branch."
+name: "Cleanup Test Branch"
+description: "Cleans up a branch created by create-test-branch."
 inputs:
   repository:
     description: "Repository name with owner. For example, actions/checkout."
     required: true
 
   branch:
-    description: "The branch output from create-ci-branch."
+    description: "The branch output from create-test-branch."
     required: true
 
   github-token:

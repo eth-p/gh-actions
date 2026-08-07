@@ -71,7 +71,7 @@ runs:
         repositories: ${{ inputs.repository }}
 
     - name: "Run action using GitHub App token"
-      uses: $/create-ci-branch
+      uses: $/create-test-branch
       id: run
       env:
         GITHUB_ACTION_PATH: ${{ github.action_path }}/..

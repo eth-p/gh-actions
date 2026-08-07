@@ -8,10 +8,21 @@ on:
       # ----- BEGIN DETECTED DEPENDENCIES -----
       - actions-assert/action.yaml
       - actions-assert/asserts.sh
-      - create-ci-branch/as-app/action.yaml
+      - cleanup-hook/action-main.js
+      - cleanup-hook/action-post.js
+      - cleanup-hook/action.yaml
+      - cleanup-hook/inputs.js
+      - create-test-branch/action.yaml
+      - create-test-branch/as-app/action.yaml
+      - create-test-branch/cleanup/action.yaml
+      - create-test-branch/cleanup/cleanup.sh
       - .github/workflows/test-action-actions-assert.yaml
-      - .github/workflows/test-action-create-ci-branch-as-app.yaml
+      - .github/workflows/test-action-cleanup-hook.yaml
+      - .github/workflows/test-action-create-test-branch-as-app.yaml
+      - .github/workflows/test-action-create-test-branch.yaml
+      - .github/workflows/test-action-setup-git.yaml
       - .github/workflows/test-action-update-pr.yaml
+      - setup-git/action.yaml
       - update-pr/action.yaml
       # ----- END DETECTED DEPENDENCIES -----
   pull_request:
@@ -19,7 +30,7 @@ on:
 
 env:
   TEST_REPO: eth-p/gh-actions-test-repo
-  TEST_BRANCH: "" # set within jobs when running $/create-ci-branch
+  TEST_BRANCH: "" # set within jobs when running $/create-test-branch
 
 jobs:
   test-when-nothing-to-merge:
@@ -27,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - id: test-branch
-        uses: $/create-ci-branch/as-app
+        uses: $/create-test-branch/as-app
         with:
           ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
@@ -70,7 +81,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - id: test-branch
-        uses: $/create-ci-branch/as-app
+        uses: $/create-test-branch/as-app
         with:
           ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
@@ -168,7 +179,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - id: test-branch
-        uses: $/create-ci-branch/as-app
+        uses: $/create-test-branch/as-app
         with:
           ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}

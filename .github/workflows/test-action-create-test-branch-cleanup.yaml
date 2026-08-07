@@ -1,5 +1,5 @@
 # This is a workflow used to validate the behavior of an action in this repo.
-name: "Test Action: create-ci-branch/clean"
+name: "Test Action: create-test-branch/cleanup"
 
 on:
   push:
@@ -8,12 +8,21 @@ on:
       # ----- BEGIN DETECTED DEPENDENCIES -----
       - actions-assert/action.yaml
       - actions-assert/asserts.sh
-      - create-ci-branch/as-app/action.yaml
-      - create-ci-branch/cleanup/action.yaml
-      - create-ci-branch/cleanup/cleanup.sh
+      - cleanup-hook/action-main.js
+      - cleanup-hook/action-post.js
+      - cleanup-hook/action.yaml
+      - cleanup-hook/inputs.js
+      - create-test-branch/action.yaml
+      - create-test-branch/as-app/action.yaml
+      - create-test-branch/cleanup/action.yaml
+      - create-test-branch/cleanup/cleanup.sh
       - .github/workflows/test-action-actions-assert.yaml
-      - .github/workflows/test-action-create-ci-branch-as-app.yaml
-      - .github/workflows/test-action-create-ci-branch-cleanup.yaml
+      - .github/workflows/test-action-cleanup-hook.yaml
+      - .github/workflows/test-action-create-test-branch-as-app.yaml
+      - .github/workflows/test-action-create-test-branch-cleanup.yaml
+      - .github/workflows/test-action-create-test-branch.yaml
+      - .github/workflows/test-action-setup-git.yaml
+      - setup-git/action.yaml
       # ----- END DETECTED DEPENDENCIES -----
   pull_request:
     paths: *paths
@@ -27,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - id: test-branch
-        uses: $/create-ci-branch/as-app
+        uses: $/create-test-branch/as-app
         with:
           ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
@@ -35,7 +44,7 @@ jobs:
           skip-cleanup: true
 
       - id: action
-        uses: $/create-ci-branch/cleanup
+        uses: $/create-test-branch/cleanup
         with:
           repository: ${{ env.TEST_REPO }}
           github-token: ${{ steps.test-branch.outputs.token }}
@@ -66,7 +75,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - id: test-branch
-        uses: $/create-ci-branch/as-app
+        uses: $/create-test-branch/as-app
         with:
           ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
@@ -80,7 +89,7 @@ jobs:
           git push origin "${TEST_BRANCH}-extra"
 
       - id: action
-        uses: $/create-ci-branch/cleanup
+        uses: $/create-test-branch/cleanup
         with:
           repository: ${{ env.TEST_REPO }}
           github-token: ${{ steps.test-branch.outputs.token }}
