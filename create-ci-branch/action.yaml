@@ -1,16 +1,12 @@
-name: "Create CI Branch"
-description: "Creates a unique branch in a remote repo."
+name: "Create Test Branch"
+description: "Creates a unique, ephemeral branch in a remote repo."
 inputs:
   repository:
     description: "Repository name with owner. For example, actions/checkout."
     required: true
 
-  ghapp-client-id:
-    description: "The client ID of a GitHub app installed in the remote repo."
-    required: true
-
-  ghapp-private-key:
-    description: "The private key of a GitHub app installed in the remote repo."
+  github-token:
+    description: "The GITHUB_TOKEN to use for authorization."
     required: true
 
   branch-from:
@@ -28,9 +24,9 @@ inputs:
     default: "."
     required: false
 
-  cleanup-after-job:
-    description: "If not set to false, the branch will be deleted after the running job ends."
-    default: "true"
+  skip-cleanup:
+    description: "If set to true, the branch will not be deleted at the end of the job."
+    default: "false"
     required: false
 
   set-env-var:
@@ -47,22 +43,10 @@ outputs:
     description: "A Markdown banner to refer back to the current action."
     value: ${{ steps.vars.outputs.banner }}
 
-  git-name:
-    description: "The git user.name used to create commits."
-    value: ${{ steps.checkout.outputs.git-name }}
-
-  git-email:
-    description: "The git user.email used to create commits."
-    value: ${{ steps.checkout.outputs.git-email }}
-
-  token:
-    description: "The GitHub App's repo-scoped GITHUB_TOKEN."
-    value: ${{ steps.checkout.outputs.token }}
-
 runs:
   using: "composite"
   steps:
-    - name: "Generate Variables"
+    - name: "Generate variables"
       id: vars
       shell: bash
       env:
@@ -74,29 +58,33 @@ runs:
           printf "branch=%s%s\n" "$BRANCH_PREFIX" "$(uuidgen | tr -d '-')"
           printf "run-url=%s\n" "$run_url"
           printf "banner<<EOF\n"
+          printf "> [!note]\n> "
           printf "%s\n" \
-            "> [!note]" \
-            "> This branch was generated as part of a" \
-            "> [GitHub Actions run](${run_url})" \
-            "> in [${{ github.repository }}](${{ github.server_url }}/${{ github.repository }})." \
-            "" \
-            "---"
-          printf "EOF\n"
+            "This branch was generated as part of a" \
+            "[GitHub Actions run](${run_url})" \
+            "in [${{ github.repository }}]" \
+            "(${{ github.server_url }}/${{ github.repository }})."
+          printf "\n---\nEOF\n"
         } >>"$GITHUB_OUTPUT"
 
-    - name: "Checkout Repo"
+    - name: "Checkout repo"
       id: checkout
-      uses: $/checkout-as-app
+      uses: actions/checkout@v7
       with:
+        token: ${{ inputs.github-token || github.token }}
         repository: ${{ inputs.repository }}
-        ghapp-client-id: ${{ inputs.ghapp-client-id }}
-        ghapp-private-key: ${{ inputs.ghapp-private-key }}
         path: ${{ inputs.path }}
         ref: ${{ inputs.branch-from }}
         persist-credentials: true
-        configure-git: true
 
-    - name: "Create Branch"
+    - name: "Setup git"
+      id: setup-git
+      uses: $/setup-git
+      with:
+        github-token: ${{ inputs.github-token || github.token }}
+        scope: local
+
+    - name: "Create branch"
       shell: bash
       env:
         REPO_PATH: "${{ inputs.path }}"
@@ -124,10 +112,10 @@ runs:
         printf "%s=%s\n" "$SET_ENV_VAR" "$BRANCH" >>"$GITHUB_ENV"
 
     - name: "Add cleanup hook"
-      if: ${{ inputs.cleanup-after-job != 'false' }}
+      if: ${{ inputs.skip-cleanup != 'true' }}
       env:
-        GH_TOKEN: ${{ steps.checkout.outputs.token }}
-        GITHUB_TOKEN: ${{ steps.checkout.outputs.token }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
         REPOSITORY: ${{ inputs.repository }}
         BRANCH_PREFIX: ${{ steps.vars.outputs.branch }}
       uses: $/cleanup-hook

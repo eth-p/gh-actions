@@ -36,18 +36,6 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: "Generate Variables"
-      id: vars
-      shell: bash
-      env:
-        REPOSITORY: ${{ inputs.repository }}
-      run: |-
-        set -euo pipefail
-        {
-          printf "repo-owner=%s\n" "$(dirname -- "$REPOSITORY")"
-          printf "repo-name=%s\n" "$(basename -- "$REPOSITORY")"
-        } >>"$GITHUB_OUTPUT"
-
     - name: "Get GitHub Token for ${{ inputs.repository }}"
       if: ${{ inputs.github-token == '' && inputs.ghapp-client-id != '' }}
       uses: actions/create-github-app-token@v3
@@ -56,7 +44,7 @@ runs:
         client-id: ${{ inputs.ghapp-client-id }}
         private-key: ${{ inputs.ghapp-private-key }}
         owner: ${{ steps.vars.outputs.repo-owner }}
-        repositories: ${{ steps.vars.outputs.repo-name }}
+        repositories: ${{ inputs.repository }}
 
     - name: Prepare authorization
       id: auth

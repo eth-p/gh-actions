@@ -1,0 +1,85 @@
+name: "Create Test Branch (As GitHub App)"
+description: "Creates a unique, ephemeral branch in a remote repo."
+inputs:
+  ghapp-client-id:
+    description: "The client ID of a GitHub app installed in the remote repo."
+    required: false
+    default: ""
+
+  ghapp-private-key:
+    description: "The private key of a GitHub app installed in the remote repo."
+    required: false
+    default: ""
+
+  # ----- COPIED FROM THE BASE ACTION -----
+  repository:
+    description: "Repository name with owner. For example, actions/checkout."
+    required: true
+
+  github-token:
+    description: "The GITHUB_TOKEN to use for authorization."
+    required: true
+
+  branch-from:
+    description: "The base branch to start from."
+    default: ""
+    required: false
+
+  branch-prefix:
+    description: "The prefix to use for generated branches."
+    default: "ci/"
+    required: false
+
+  path:
+    description: "Relative path under $GITHUB_WORKSPACE to place the repository"
+    default: "."
+    required: false
+
+  skip-cleanup:
+    description: "If set to true, the branch will not be deleted at the end of the job."
+    default: "false"
+    required: false
+
+  set-env-var:
+    description: "If specified, sets this environment variable to the branch name in future steps."
+    default: "TEST_BRANCH"
+    required: false
+
+outputs:
+  token:
+    description: "The GitHub App's repo-scoped GITHUB_TOKEN."
+    value: ${{ steps.app-token.outputs.token }}
+
+  # ----- COPIED FROM THE BASE ACTION -----
+  branch:
+    description: "The generated branch name."
+    value: ${{ steps.run.outputs.branch }}
+
+  banner:
+    description: "A Markdown banner to refer back to the current action."
+    value: ${{ steps.run.outputs.banner }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Get GitHub Token for ${{ inputs.repository }}"
+      uses: actions/create-github-app-token@v3
+      id: app-token
+      with:
+        client-id: ${{ inputs.ghapp-client-id }}
+        private-key: ${{ inputs.ghapp-private-key }}
+        repositories: ${{ inputs.repository }}
+
+    - name: "Run action using GitHub App token"
+      uses: $/create-ci-branch
+      id: run
+      env:
+        GITHUB_ACTION_PATH: ${{ github.action_path }}/..
+      with:
+        github-token: ${{ steps.app-token.outputs.token }}
+        repository: ${{ inputs.repository }}
+        branch-from: ${{ inputs.branch-from }}
+        branch-prefix: ${{ inputs.branch-prefix }}
+        path: ${{ inputs.path }}
+        skip-cleanup: ${{ inputs.skip-cleanup }}
+        set-env-var: ${{ inputs.set-env-var }}

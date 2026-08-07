@@ -8,18 +8,9 @@ on:
       # ----- BEGIN DETECTED DEPENDENCIES -----
       - actions-assert/action.yaml
       - actions-assert/asserts.sh
-      - checkout-as-app/action.yaml
-      - cleanup-hook/action-main.js
-      - cleanup-hook/action-post.js
-      - cleanup-hook/action.yaml
-      - cleanup-hook/inputs.js
-      - create-ci-branch/action.yaml
-      - create-ci-branch/cleanup/action.yaml
-      - create-ci-branch/cleanup/cleanup.sh
+      - create-ci-branch/as-app/action.yaml
       - .github/workflows/test-action-actions-assert.yaml
-      - .github/workflows/test-action-checkout-as-app.yaml
-      - .github/workflows/test-action-cleanup-hook.yaml
-      - .github/workflows/test-action-create-ci-branch.yaml
+      - .github/workflows/test-action-create-ci-branch-as-app.yaml
       - .github/workflows/test-action-update-pr.yaml
       - update-pr/action.yaml
       # ----- END DETECTED DEPENDENCIES -----
@@ -36,12 +27,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - id: test-branch
-        uses: $/create-ci-branch
+        uses: $/create-ci-branch/as-app
         with:
           ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
           repository: ${{ env.TEST_REPO }}
-          cleanup-after-job: true
 
       - name: "Setup"
         shell: bash
@@ -80,12 +70,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - id: test-branch
-        uses: $/create-ci-branch
+        uses: $/create-ci-branch/as-app
         with:
           ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
           repository: ${{ env.TEST_REPO }}
-          cleanup-after-job: true
 
       - name: "Setup"
         shell: bash
@@ -179,12 +168,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - id: test-branch
-        uses: $/create-ci-branch
+        uses: $/create-ci-branch/as-app
         with:
           ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
           ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
           repository: ${{ env.TEST_REPO }}
-          cleanup-after-job: true
 
       - name: "Setup"
         shell: bash
