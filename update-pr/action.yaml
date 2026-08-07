@@ -180,6 +180,7 @@ runs:
           core.setOutput('exists', true);
           core.setOutput('number', pr.number);
           core.setOutput('url', pr.html_url);
+          core.setOutput('title', pr.title);
           core.setOutput('body-file', bodyFile);
 
     - name: Update pull request
@@ -195,6 +196,8 @@ runs:
         EXISTING_PR_URL: ${{ steps.existing.outputs.url }}
         CREATED_PR_NUMBER: ${{ steps.create.outputs.number }}
         CREATED_PR_URL: ${{ steps.create.outputs.url }}
+        CREATED_PR_TITLE: ${{ steps.create.outputs.title }}
+        CREATED_PR_BODY_FILE: ${{ steps.create.outputs.body-file }}
         PR_REPO: ${{ inputs.repository }}
         SET_TITLE: ${{ inputs.title }}
         SET_BODY: ${{ inputs.body }}
@@ -207,12 +210,13 @@ runs:
           const pull_number = env.EXISTING_PR_NUMBER || env.CREATED_PR_NUMBER;
           const pull_url = env.EXISTING_PR_URL || env.CREATED_PR_URL;
           const body_file = env.EXISTING_PR_BODY_FILE || env.CREATED_PR_BODY_FILE;
+          const title = env.EXISTING_PR_TITLE || env.CREATED_PR_TITLE;
           const propsToUpdate = {};
 
           core.setOutput('body-file', body_file);
           core.setOutput('number', pull_number);
           core.setOutput('url', pull_url);
-          core.setOutput('title', env.PR_TITLE);
+          core.setOutput('title', title);
 
           if (env.CREATED_PR_NUMBER !== '') {
             console.log("Nothing to update.");

@@ -232,3 +232,11 @@ jobs:
             - name: "Output 'url' is set"
               output: url
               is: not empty
+
+            - name: "Output 'title' is set"
+              output: title
+              is: not empty
+
+            - name: "Output 'body-file' is set"
+              output: body-file
+              is: not empty
