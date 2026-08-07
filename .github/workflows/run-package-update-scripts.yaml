@@ -82,21 +82,27 @@ jobs:
       script-branch: ${{ steps.vars.outputs.script-branch }}
       flake-ref: ${{ steps.vars.outputs.flake-ref }}
     steps:
-      # Checkout the repo branch either via GITHUB_TOKEN or GitHub App.
+      - name: "Get GitHub Token for ${{ inputs.repository }}"
+        if: ${{ inputs.auth-with-ghapp == 'true' }}
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.ghapp-client-id }}
+          private-key: ${{ secrets.ghapp-private-key }}
+          repositories: ${{ inputs.repository }}
+
       - name: Checkout
-        if: ${{ inputs.auth-with-ghapp != 'true' }}
         uses: actions/checkout@v7
         with:
+          token: ${{ steps.app-token.outputs.token || github.token }}
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.base-branch }}
-      - name: Checkout (via GitHub App)
-        if: ${{ inputs.auth-with-ghapp == 'true' }}
-        uses: $/checkout-as-app
+
+      - name: Setup git
+        uses: $/setup-git
         with:
-          repository: ${{ inputs.repository }}
-          ref: ${{ inputs.base-branch }}
-          ghapp-client-id: ${{ secrets.ghapp-client-id }}
-          ghapp-private-key: ${{ secrets.ghapp-private-key }}
+          github-token: ${{ steps.app-token.outputs.token || github.token }}
+          scope: local
 
       # Rebase the PR branch onto the base to ensure it's mergeable.
       - name: Rebase '${{ inputs.pr-branch }}' onto '${{ inputs.base-branch }}'
@@ -156,52 +162,39 @@ jobs:
       matrix:
         script: ${{ fromJson(needs.prepare.outputs.matrix) }}
     steps:
+      - name: "Get GitHub Token for ${{ inputs.repository }}"
+        if: ${{ inputs.auth-with-ghapp == 'true' }}
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.ghapp-client-id }}
+          private-key: ${{ secrets.ghapp-private-key }}
+          repositories: ${{ inputs.repository }}
+
       # Checkout the PR branch.
       - name: Checkout '${{ inputs.pr-branch }}'
-        if: ${{ inputs.auth-with-ghapp != 'true' }}
         uses: actions/checkout@v7
         with:
+          token: ${{ steps.app-token.outputs.token || github.token }}
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.pr-branch }}
           path: pr-branch
-      - name: Checkout '${{ inputs.pr-branch }}' (via GitHub App)
-        if: ${{ inputs.auth-with-ghapp == 'true' }}
-        uses: $/checkout-as-app
+
+      - name: Setup git
+        uses: $/setup-git
         with:
-          repository: ${{ inputs.repository }}
-          ref: ${{ inputs.pr-branch }}
+          github-token: ${{ steps.app-token.outputs.token || github.token }}
           path: pr-branch
-          ghapp-client-id: ${{ secrets.ghapp-client-id }}
-          ghapp-private-key: ${{ secrets.ghapp-private-key }}
+          scope: local
 
       # Checkout the script branch.
       - name: Checkout '${{ needs.prepare.outputs.script-branch }}'
-        if: ${{ inputs.auth-with-ghapp != 'true' }}
         uses: actions/checkout@v7
         with:
+          token: ${{ steps.app-token.outputs.token || github.token }}
           repository: ${{ inputs.repository }}
           ref: ${{ needs.prepare.outputs.script-branch }}
           path: scripts-branch
-      - name: Checkout '${{ needs.prepare.outputs.script-branch }}' (via GitHub App)
-        if: ${{ inputs.auth-with-ghapp == 'true' }}
-        uses: $/checkout-as-app
-        with:
-          repository: ${{ inputs.repository }}
-          ref: ${{ needs.prepare.outputs.script-branch }}
-          path: scripts-branch
-          ghapp-client-id: ${{ secrets.ghapp-client-id }}
-          ghapp-private-key: ${{ secrets.ghapp-private-key }}
-
-      # Ensure git has a user and email configured.
-      - name: Set up git config
-        shell: bash
-        run: |-
-          set -euo pipefail
-          cd pr-branch
-          if ! git config --local user.name; then
-            git config --local user.name "github-actions[bot]"
-            git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          fi
 
       # Set up nix develop profile.
       - name: Set up nix develop
@@ -270,35 +263,30 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      # Checkout the PR branch either via GITHUB_TOKEN or GitHub App.
+      # Checkout the PR branch.
+      - name: "Get GitHub Token for ${{ inputs.repository }}"
+        if: ${{ inputs.auth-with-ghapp == 'true' }}
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.ghapp-client-id }}
+          private-key: ${{ secrets.ghapp-private-key }}
+          repositories: ${{ inputs.repository }}
+
       - name: Checkout '${{ inputs.pr-branch }}'
-        if: ${{ inputs.auth-with-ghapp != 'true' }}
         uses: actions/checkout@v7
         with:
+          token: ${{ steps.app-token.outputs.token || github.token }}
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.pr-branch }}
           path: pr-branch
-      - name: Checkout '${{ inputs.pr-branch }}' (via GitHub App)
-        if: ${{ inputs.auth-with-ghapp == 'true' }}
-        id: ghapp-checkout
-        uses: $/checkout-as-app
-        with:
-          repository: ${{ inputs.repository }}
-          ref: ${{ inputs.pr-branch }}
-          path: pr-branch
-          ghapp-client-id: ${{ secrets.ghapp-client-id }}
-          ghapp-private-key: ${{ secrets.ghapp-private-key }}
 
-      # Ensure git has a user and email configured.
-      - name: Set up git config
-        shell: bash
-        run: |-
-          set -euo pipefail
-          cd pr-branch
-          if ! git config --local user.name; then
-            git config --local user.name "github-actions[bot]"
-            git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          fi
+      - name: Setup git
+        uses: $/setup-git
+        with:
+          github-token: ${{ steps.app-token.outputs.token || github.token }}
+          path: pr-branch
+          scope: local
 
       - name: Download patches
         uses: actions/download-artifact@v7
@@ -333,27 +321,11 @@ jobs:
           cd pr-branch
           git push
 
-      - name: Prepare pull request
-        if: "${{ steps.apply-commits.outputs.applied == 'true' }}"
-        id: prepare-pr
-        shell: bash
-        env:
-          AUTH_WITH_GHAPP: ${{ inputs.auth-with-ghapp }}
-          GH_TOKEN: ${{ github.token }}
-          GHAPP_TOKEN: ${{ steps.ghapp-checkout.outputs.token }}
-        run: |-
-          set -euo pipefail
-          if [[ "$AUTH_WITH_GHAPP" = true ]]; then
-            echo "token=$GHAPP_TOKEN" >>"$GITHUB_OUTPUT"
-          else
-            echo "token=$GH_TOKEN" >>"$GITHUB_OUTPUT"
-          fi
-
       - name: Create pull request
         if: "${{ steps.apply-commits.outputs.applied == 'true' }}"
         uses: $/update-pr
         with:
-          github-token: ${{ steps.prepare-pr.outputs.token }}
+          github-token: ${{ steps.app-token.outputs.token || github.token }}
           repository: ${{ inputs.repository }}
           create-pr: true
           base: ${{ inputs.base-branch }}

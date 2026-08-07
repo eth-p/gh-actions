@@ -8,7 +8,6 @@ on:
       # ----- BEGIN DETECTED DEPENDENCIES -----
       - actions-assert/action.yaml
       - actions-assert/asserts.sh
-      - checkout-as-app/action.yaml
       - cleanup-hook/action-main.js
       - cleanup-hook/action-post.js
       - cleanup-hook/action.yaml
@@ -19,7 +18,6 @@ on:
       - create-test-branch/cleanup/cleanup.sh
       - .github/workflows/run-package-update-scripts.yaml
       - .github/workflows/test-action-actions-assert.yaml
-      - .github/workflows/test-action-checkout-as-app.yaml
       - .github/workflows/test-action-cleanup-hook.yaml
       - .github/workflows/test-action-create-test-branch-as-app.yaml
       - .github/workflows/test-action-create-test-branch-cleanup.yaml
@@ -108,11 +106,18 @@ jobs:
       - test-when-has-updates-setup
       - test-when-has-updates-run
     steps:
-      - uses: $/checkout-as-app
-        id: checkout
+      - name: "Get GitHub Token"
+        id: app-token
+        uses: actions/create-github-app-token@v3
         with:
-          ghapp-client-id: ${{ secrets.GHAPP_CLIENT_ID }}
-          ghapp-private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          client-id: ${{ secrets.GHAPP_CLIENT_ID }}
+          private-key: ${{ secrets.GHAPP_PRIVATE_KEY }}
+          repositories: ${{ env.TEST_REPO }}
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          token: ${{ steps.app-token.outputs.token }}
           repository: ${{ env.TEST_REPO }}
           ref: ${{ needs.test-when-has-updates-setup.outputs.branch }}-pr
 
@@ -120,7 +125,7 @@ jobs:
         id: assert
         uses: $/actions-assert
         env:
-          GH_TOKEN: ${{ steps.checkout.outputs.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         with:
           asserts: |-
             - name: "Has changes from 'foo' script"
