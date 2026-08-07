@@ -54,9 +54,15 @@ on:
 
       auth-with-ghapp:
         description: "If true, auths using a GitHub app."
-        type: string
+        type: boolean
         required: false
-        default: "false"
+        default: false
+
+      requires-nix:
+        description: "If true, sets up nix inside the job where the script is run."
+        type: boolean
+        required: false
+        default: false
 
     secrets:
       ghapp-client-id:
@@ -184,6 +190,11 @@ jobs:
           repository: ${{ inputs.repository }}
           ref: ${{ needs.prepare.outputs.script-branch }}
           path: scripts-branch
+
+      # Install and set up runtime dependencies.
+      - name: "Install nix"
+        if: ${{ inputs.requires-nix == true }}
+        uses: cachix/install-nix-action@v31.11.0
 
       # Run the update script.
       - name: Run the update script
