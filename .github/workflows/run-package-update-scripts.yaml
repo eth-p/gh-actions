@@ -80,7 +80,6 @@ jobs:
     outputs:
       matrix: ${{ steps.vars.outputs.matrix }}
       script-branch: ${{ steps.vars.outputs.script-branch }}
-      flake-ref: ${{ steps.vars.outputs.flake-ref }}
     steps:
       - name: "Get GitHub Token for ${{ inputs.repository }}"
         if: ${{ inputs.auth-with-ghapp == 'true' }}
@@ -121,7 +120,6 @@ jobs:
           SCRIPT_BRANCH: ${{ inputs.script-branch }}
           BASE_BRANCH: ${{ inputs.base-branch }}
           PR_BRANCH: ${{ inputs.pr-branch }}
-          DEVELOP_FLAKE: ${{ inputs.develop-flake }}
         run: |-
           set -euo pipefail
 
@@ -135,18 +133,9 @@ jobs:
             script_branch_coalesced="${BASE_BRANCH}"
           fi
 
-          # Adjust the flake ref to use the flake within the scripts branch.
-          flake_ref="${DEVELOP_FLAKE}"
-          case "$flake_ref" in
-            .) flake_ref="./scripts-branch" ;;
-            ./*) flake_ref="./scripts-branch/${flake_ref:2}" ;;
-            path:*) flake_ref="path:scripts-branch/${flake_ref:5}" ;;
-          esac
-
           {
             echo "matrix=${matrix}"
             echo "script-branch=${script_branch_coalesced}"
-            echo "flake-ref=${flake_ref}"
           } >>"$GITHUB_OUTPUT"
 
   # Run the update scripts.
@@ -196,29 +185,15 @@ jobs:
           ref: ${{ needs.prepare.outputs.script-branch }}
           path: scripts-branch
 
-      # Set up nix develop profile.
-      - name: Set up nix develop
-        id: nix-develop
-        if: ${{ needs.prepare.outputs.flake-ref != '' }}
-        uses: $/nix-flake-develop
-        with:
-          flake: ${{ needs.prepare.outputs.flake-ref }}
-
       # Run the update script.
       - name: Run the update script
         env:
           GH_TOKEN: ${{ github.token }}
-          FLAKE_PROFILE: ${{ steps.nix-develop.outputs.activate-bash }}
           SCRIPT: ${{ matrix.script }}
           UPDATE_WORKSPACE: ${{ github.workspace }}/pr-branch
           SCRIPTS_WORKSPACE: ${{ github.workspace }}/scripts-branch
         run: |-
           set -euo pipefail
-
-          # shellcheck disable=SC1090
-          if [[ -n "${FLAKE_PROFILE}" ]]; then
-            source "${FLAKE_PROFILE}"
-          fi
 
           # Run the script.
           cd "$UPDATE_WORKSPACE"
@@ -228,7 +203,6 @@ jobs:
       - name: Export the commits
         id: export
         env:
-          FLAKE_PROFILE: ${{ steps.nix-develop.outputs.activate-bash }}
           PR_BRANCH: ${{ inputs.pr-branch }}
         run: |-
           set -euo pipefail
